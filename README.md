@@ -63,6 +63,37 @@ window. Pass `--new-window` to opt out and get a separate window.
 
 Opening a file that is already in a tab just focuses that tab.
 
+### Sidebar
+
+The left sidebar holds two independent trees. Toggle the whole thing with
+<kbd>Ctrl</kbd>+<kbd>B</kbd> or the toolbar's panel button, drag its right edge
+to resize, and click either pane's header to collapse just that pane. Width,
+visibility, collapsed panes and expanded folders are all remembered.
+
+**Open documents** — the files you have open, arranged by their own directory
+structure. Only folders that actually contain an open document appear, and
+chains of single sub-directories are folded into one row, so the tree stays
+short. Clicking a document switches to its tab; the active one is highlighted
+and a file changed on disk shows the same dot as its tab.
+
+**Computer** — browse for something to open. Clicking a file opens it in a new
+tab; anything md-view cannot display is handed to the OS. The roots are the
+folder containing your open documents, then Home, Desktop, Documents, Downloads
+and the drives.
+
+That first root is derived from *all* open documents rather than the active one,
+on purpose: a root that changed identity every time you switched tabs would move
+out from under whatever you had just expanded. The ◉ button in the pane header
+expands the tree down to the document currently on screen.
+
+Only directories and viewable files are listed — this tree exists to find
+something to open, and hiding the rest keeps it readable. Dot-files and Windows
+hidden/system entries are skipped, and a very long directory is capped with a
+“… *n* more” row rather than pouring thousands of entries into the page.
+
+Folders load lazily over the bridge and expand **without reloading the page**,
+so opening a branch never re-renders your document or re-runs its diagrams.
+
 ### Refresh
 
 <kbd>F5</kbd> (or the toolbar's reload button) **rebuilds the active tab from
@@ -105,6 +136,7 @@ any magnification because they are re-laid out rather than upscaled.
 
 | | |
 |---|---|
+| <kbd>Ctrl</kbd>+<kbd>B</kbd> | show / hide the sidebar |
 | <kbd>Ctrl</kbd>+<kbd>O</kbd> | open file(s) |
 | <kbd>Ctrl</kbd>+<kbd>T</kbd> | open in a new tab |
 | <kbd>Ctrl</kbd>+<kbd>W</kbd> | close tab (closes the window on the last one) |

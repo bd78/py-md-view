@@ -349,6 +349,7 @@ BASE_CSS = r"""
   --btn-hover: rgba(0,0,0,.055); --btn-active: rgba(0,0,0,.11);
   --shadow: 0 1px 2px rgba(0,0,0,.08), 0 10px 30px rgba(0,0,0,.09);
   --canvas: #eef0f4; --menu-bg: #ffffff;
+  --side-bg: #f6f7f9; --sel-bg: #e3e9f5;
   --h-rule: transparent; --h-pad: 0;
   --font-sans: "Segoe UI Variable Text", -apple-system, "Segoe UI", system-ui,
                Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -365,6 +366,7 @@ BASE_CSS = r"""
   --btn-hover: rgba(255,255,255,.08); --btn-active: rgba(255,255,255,.16);
   --shadow: 0 1px 3px rgba(0,0,0,.5), 0 10px 30px rgba(0,0,0,.4);
   --canvas: #010409; --menu-bg: #161b22;
+  --side-bg: #0b0f14; --sel-bg: #1f3a5f;
   --h-rule: #21262d; --h-pad: .3em;
   --font-sans: -apple-system, "Segoe UI Variable Text", "Segoe UI", system-ui,
                Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -381,6 +383,7 @@ BASE_CSS = r"""
   --btn-hover: rgba(0,0,0,.06); --btn-active: rgba(0,0,0,.12);
   --shadow: 0 1px 3px rgba(31,35,40,.12), 0 8px 24px rgba(66,74,83,.12);
   --canvas: #f6f8fa; --menu-bg: #ffffff;
+  --side-bg: #f6f8fa; --sel-bg: #ddf4ff;
   --h-rule: #d1d9e0; --h-pad: .3em;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
                Helvetica, Arial, sans-serif;
@@ -465,9 +468,92 @@ button.tb svg { width: 15px; height: 15px; fill: none; stroke: currentColor;
 .menu .swatch.s-github { background: linear-gradient(135deg, #ffffff 50%, #0969da 50%); }
 .menu hr { height: 1px; border: 0; background: var(--bar-border); margin: 4px 2px; }
 
+/* ---------- sidebar ---------- */
+:root { --sidebar-w: 264px; --chrome: 72px; }
+/* --sidebar-w arrives as an inline style on <body>, which outranks any
+   class rule; layout therefore reads --side-offset, which body.no-sidebar
+   can override. Declared on body so it picks up body's own --sidebar-w. */
+body { --side-offset: var(--sidebar-w); }
+body.no-sidebar { --side-offset: 0px; }
+body.single-tab { --chrome: 38px; }
+
+#sidebar {
+  position: fixed; top: 38px; left: 0; bottom: 0; width: var(--side-offset);
+  z-index: 98; display: flex; flex-direction: column;
+  background: var(--side-bg); border-right: 1px solid var(--bar-border);
+  overflow: hidden; user-select: none; -webkit-user-select: none;
+}
+body.no-sidebar #sidebar { display: none; }
+
+.pane { display: flex; flex-direction: column; min-height: 0; }
+.pane.docs { flex: 0 1 auto; max-height: 45%; }
+.pane.files { flex: 1 1 auto; border-top: 1px solid var(--bar-border); }
+.pane > header {
+  display: flex; align-items: center; gap: 6px; padding: 7px 10px 6px;
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--fg-faint); font-weight: 600; flex: none; cursor: pointer;
+}
+.pane > header:hover { color: var(--fg-muted); }
+.pane > header .caret { transition: transform .12s ease; font-size: 9px; }
+.pane.collapsed > header .caret { transform: rotate(-90deg); }
+.pane.collapsed { flex: 0 0 auto; max-height: none; }
+.pane.collapsed .tree { display: none; }
+.pane > header .count { margin-left: auto; font-weight: 400; letter-spacing: 0; }
+.pane > header .reveal {
+  margin-left: auto; appearance: none; border: 0; background: transparent;
+  color: var(--fg-faint); cursor: pointer; font-size: 12px; line-height: 1;
+  padding: 2px 4px; border-radius: 4px;
+}
+.pane > header .reveal:hover { background: var(--btn-hover); color: var(--fg); }
+.tree {
+  flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 0 8px;
+  scrollbar-width: thin; scrollbar-color: var(--fg-faint) transparent;
+}
+.tree::-webkit-scrollbar { width: 10px; }
+.tree::-webkit-scrollbar-thumb {
+  background: var(--fg-faint); border-radius: 8px;
+  border: 3px solid var(--side-bg); background-clip: padding-box;
+}
+.tree .empty { padding: 4px 12px 8px; color: var(--fg-faint); font-size: 12px; }
+
+.row {
+  display: flex; align-items: center; gap: 4px; padding: 2px 8px 2px 0;
+  font-size: 12.5px; line-height: 1.5; color: var(--fg-muted);
+  white-space: nowrap; cursor: default; border-radius: 4px;
+}
+.row:hover { background: var(--btn-hover); color: var(--fg); }
+.row.file { cursor: pointer; }
+.row.active { background: var(--sel-bg); color: var(--fg); font-weight: 600; }
+.row .chev {
+  flex: none; width: 14px; text-align: center; font-size: 9px;
+  color: var(--fg-faint); transition: transform .12s ease;
+}
+.row .chev.spin { animation: mdvspin .7s linear infinite; }
+@keyframes mdvspin { to { transform: rotate(360deg); } }
+.node.open > .row > .chev { transform: rotate(90deg); }
+.row .chev.leaf { visibility: hidden; }
+.row .ico { flex: none; width: 14px; text-align: center; opacity: .75; font-size: 11px; }
+.row .nm { overflow: hidden; text-overflow: ellipsis; }
+.row .dot {
+  flex: none; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); margin-left: 4px; visibility: hidden;
+}
+.row.stale .dot { visibility: visible; }
+.node > .kids { display: none; }
+.node.open > .kids { display: block; }
+.row.more { color: var(--fg-faint); font-style: italic; cursor: default; }
+.row.denied { color: var(--fg-faint); font-style: italic; }
+
+#sideResize {
+  position: fixed; top: 38px; bottom: 0; width: 5px; z-index: 101;
+  left: calc(var(--side-offset) - 2px); cursor: col-resize;
+}
+#sideResize:hover, #sideResize.dragging { background: var(--accent); opacity: .55; }
+body.no-sidebar #sideResize { display: none; }
+
 /* ---------- tab strip ---------- */
 #tabs {
-  position: fixed; top: 38px; left: 0; right: 0; height: 34px; z-index: 99;
+  position: fixed; top: 38px; left: var(--side-offset); right: 0; height: 34px; z-index: 99;
   display: flex; align-items: stretch; gap: 2px; padding: 0 6px;
   background: var(--bar-bg); backdrop-filter: blur(12px) saturate(160%);
   border-bottom: 1px solid var(--bar-border);
@@ -510,10 +596,9 @@ body.single-tab #tabs { display: none; }
 
 /* ---------- scroll host ---------- */
 #scroller {
-  position: absolute; inset: var(--chrome, 72px) 0 0 0; overflow: auto;
+  position: absolute; inset: var(--chrome) 0 0 var(--side-offset); overflow: auto;
   scrollbar-color: var(--fg-faint) transparent;
 }
-body.single-tab #scroller { inset: 38px 0 0 0; }
 #scroller::-webkit-scrollbar { width: 12px; height: 12px; }
 #scroller::-webkit-scrollbar-thumb {
   background: var(--fg-faint); border-radius: 8px;
@@ -591,7 +676,7 @@ pre.mermaid { background: none; padding: 0; margin: 0; overflow: visible; text-a
 pre.mermaid:not([data-processed]) { color: var(--fg-faint); font-size: .8em; text-align: left; }
 pre.mermaid svg { max-width: 100%; height: auto; }
 body.mode-mermaid #content {
-  min-height: calc(100vh - var(--chrome, 72px)); display: grid; place-items: center;
+  min-height: calc(100vh - var(--chrome)); display: grid; place-items: center;
   padding: 24px;
 }
 body.mode-mermaid .mermaid-figure { margin: 0; }
@@ -885,6 +970,7 @@ VIEWER_JS = r"""
     if (ctrl && (e.key === "0" || e.code === "Numpad0")) { e.preventDefault(); resetZoom(); return; }
     if (ctrl && e.key.toLowerCase() === "o") { e.preventDefault(); call("pick_file"); return; }
     if (ctrl && e.key.toLowerCase() === "d") { e.preventDefault(); cycleStyle(); return; }
+    if (ctrl && e.key.toLowerCase() === "b") { e.preventDefault(); toggleSidebar(); return; }
     if (ctrl && e.key.toLowerCase() === "t") { e.preventDefault(); call("new_tab"); return; }
     if (ctrl && e.key.toLowerCase() === "w") { e.preventDefault(); call("close_tab", -1); return; }
     if (ctrl && e.key === "Tab") {
@@ -926,6 +1012,265 @@ VIEWER_JS = r"""
       e.preventDefault(); scroller.scrollTop += scroller.clientHeight * 0.9;
     }
   });
+
+  /* ------------------------------------------------------------------ */
+  /* sidebar trees                                                      */
+  /* ------------------------------------------------------------------ */
+
+  var sidebar = document.getElementById("sidebar");
+  var docsTree = document.getElementById("docsTree");
+  var filesTree = document.getElementById("filesTree");
+
+  function callAsync(name) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    var api = window.pywebview && window.pywebview.api;
+    if (!api || typeof api[name] !== "function") return Promise.reject("no bridge");
+    try { return Promise.resolve(api[name].apply(api, args)); }
+    catch (err) { return Promise.reject(err); }
+  }
+
+  /* Every expanded folder, so Python can restore the tree after a repaint. */
+  function expandedPaths() {
+    return Array.prototype.map.call(
+      filesTree ? filesTree.querySelectorAll(".node.open[data-dir='1']") : [],
+      function (n) { return n.dataset.path; }
+    );
+  }
+
+  var saveTimer = null;
+  function saveExpanded() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () { call("set_expanded", expandedPaths()); }, 250);
+  }
+
+  function makeNode(item, depth, kind) {
+    var node = document.createElement("div");
+    node.className = "node";
+    node.dataset.path = item.path || "";
+    node.dataset.dir = item.dir ? "1" : "0";
+
+    var row = document.createElement("div");
+    row.className = "row" + (item.dir ? " dir" : " file")
+                  + (item.active ? " active" : "") + (item.stale ? " stale" : "");
+    row.style.paddingLeft = (6 + depth * 12) + "px";
+    row.title = item.path || item.name;
+    if (typeof item.tab === "number") row.dataset.tab = item.tab;
+
+    var chev = document.createElement("span");
+    chev.className = "chev" + (item.dir ? "" : " leaf");
+    chev.textContent = "▶";
+    row.appendChild(chev);
+
+    var ico = document.createElement("span");
+    ico.className = "ico";
+    ico.textContent = item.dir ? "\u{1F4C1}" : glyphFor(item.name);
+    row.appendChild(ico);
+
+    var nm = document.createElement("span");
+    nm.className = "nm";
+    nm.textContent = item.name;
+    row.appendChild(nm);
+
+    var dot = document.createElement("span");
+    dot.className = "dot";
+    row.appendChild(dot);
+
+    node.appendChild(row);
+
+    if (item.dir) {
+      var kids = document.createElement("div");
+      kids.className = "kids";
+      node.appendChild(kids);
+      if (item.children) {
+        fillKids(kids, item.children, depth + 1, kind, item.more);
+        node.classList.add("open");
+        node.dataset.loaded = "1";
+      }
+      if (item.open && !item.children) node.dataset.loaded = "";
+    }
+    return node;
+  }
+
+  function glyphFor(name) {
+    var ext = (name.split(".").pop() || "").toLowerCase();
+    if (ext === "mmd" || ext === "mermaid") return "◇";
+    if (ext === "svg") return "◩";
+    if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "apng", "avif"].indexOf(ext) >= 0) {
+      return "▦";
+    }
+    return "▬";
+  }
+
+  function fillKids(container, children, depth, kind, more) {
+    container.textContent = "";
+    children.forEach(function (child) {
+      container.appendChild(makeNode(child, depth, kind));
+    });
+    if (more) {
+      var row = document.createElement("div");
+      row.className = "row more";
+      row.style.paddingLeft = (6 + depth * 12) + "px";
+      row.textContent = "… " + more + " more";
+      container.appendChild(row);
+    }
+  }
+
+  function paintTree(container, nodes, kind, emptyText) {
+    if (!container) return;
+    container.textContent = "";
+    if (!nodes || !nodes.length) {
+      var msg = document.createElement("div");
+      msg.className = "empty";
+      msg.textContent = emptyText;
+      container.appendChild(msg);
+      return;
+    }
+    nodes.forEach(function (n) { container.appendChild(makeNode(n, 0, kind)); });
+  }
+
+  function depthOf(node) {
+    var depth = 0, cursor = node.parentElement;
+    while (cursor && cursor !== docsTree && cursor !== filesTree) {
+      if (cursor.classList.contains("kids")) depth++;
+      cursor = cursor.parentElement;
+    }
+    return depth;
+  }
+
+  function toggleDir(node, kind) {
+    if (node.classList.contains("open")) {
+      node.classList.remove("open");
+      if (kind === "files") saveExpanded();
+      return;
+    }
+    if (node.dataset.loaded === "1") {
+      node.classList.add("open");
+      if (kind === "files") saveExpanded();
+      return;
+    }
+    var chev = node.querySelector(":scope > .row > .chev");
+    if (chev) chev.classList.add("spin");
+    callAsync("list_dir", node.dataset.path).then(function (result) {
+      if (chev) chev.classList.remove("spin");
+      var kids = node.querySelector(":scope > .kids");
+      if (!kids) return;
+      node.dataset.loaded = "1";
+      var entries = (result && result.entries) || [];
+      if (!entries.length) {
+        kids.textContent = "";
+        var row = document.createElement("div");
+        row.className = "row " + (result && result.denied ? "denied" : "more");
+        row.style.paddingLeft = (6 + (depthOf(node) + 1) * 12) + "px";
+        row.textContent = result && result.denied ? "not readable" : "empty";
+        kids.appendChild(row);
+      } else {
+        fillKids(kids, entries, depthOf(node) + 1, kind, result.more);
+      }
+      node.classList.add("open");
+      if (kind === "files") saveExpanded();
+    }, function () {
+      if (chev) chev.classList.remove("spin");
+    });
+  }
+
+  function wireTree(container, kind) {
+    if (!container) return;
+    container.addEventListener("click", function (e) {
+      var row = e.target.closest(".row");
+      if (!row || row.classList.contains("more") || row.classList.contains("denied")) return;
+      var node = row.parentElement;
+      if (row.classList.contains("dir")) { toggleDir(node, kind); return; }
+      if (kind === "docs") {
+        if (row.dataset.tab !== undefined) call("select_tab", parseInt(row.dataset.tab, 10));
+      } else {
+        call("open_from_tree", node.dataset.path);
+      }
+    });
+    container.addEventListener("dblclick", function (e) {
+      // Double-clicking a folder name should not select text.
+      if (e.target.closest(".row.dir")) e.preventDefault();
+    });
+  }
+
+  paintTree(docsTree, CFG.docsTree, "docs", "No documents open.");
+  paintTree(filesTree, CFG.filesTree, "files", "No drives available.");
+  wireTree(docsTree, "docs");
+  wireTree(filesTree, "files");
+
+  var docsCount = document.getElementById("docsCount");
+  if (docsCount) docsCount.textContent = CFG.tabCount ? String(CFG.tabCount) : "";
+
+  /* keep the active document visible in the open-documents tree */
+  var activeRow = docsTree && docsTree.querySelector(".row.active");
+  if (activeRow && activeRow.scrollIntoView) {
+    activeRow.scrollIntoView({ block: "nearest" });
+  }
+
+  /* ---- pane collapse ---- */
+  function applyPanes(state) {
+    ["docs", "files"].forEach(function (name) {
+      var pane = document.getElementById(name === "docs" ? "paneDocs" : "paneFiles");
+      if (pane) pane.classList.toggle("collapsed", state[name] === false);
+    });
+  }
+  var paneState = { docs: CFG.panes.docs !== false, files: CFG.panes.files !== false };
+  applyPanes(paneState);
+
+  on("revealBtn", function (e) {
+    e.stopPropagation();          // do not collapse the pane we are revealing in
+    call("reveal_active");
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll(".pane > header"), function (h) {
+    h.addEventListener("click", function (e) {
+      if (e.target.closest(".reveal")) return;
+      var name = h.dataset.pane;
+      paneState[name] = !paneState[name];
+      applyPanes(paneState);
+      call("set_sidebar", !document.body.classList.contains("no-sidebar"),
+           currentWidth(), paneState);
+    });
+  });
+
+  /* ---- show / hide ---- */
+  function currentWidth() {
+    var raw = document.body.style.getPropertyValue("--sidebar-w");
+    return parseInt(raw, 10) || CFG.sidebarWidth || 264;
+  }
+
+  function toggleSidebar() {
+    var hidden = document.body.classList.toggle("no-sidebar");
+    call("set_sidebar", !hidden, currentWidth(), paneState);
+    if (mode === "image" && fitMode) { zoom = fitZoom(); render(); }
+  }
+  on("sidebarBtn", toggleSidebar);
+
+  /* ---- resize ---- */
+  var grip = document.getElementById("sideResize");
+  if (grip) {
+    var drag = null;
+    grip.addEventListener("pointerdown", function (e) {
+      drag = { x: e.clientX, w: currentWidth() };
+      grip.classList.add("dragging");
+      grip.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    grip.addEventListener("pointermove", function (e) {
+      if (!drag) return;
+      var next = Math.max(160, Math.min(640, drag.w + (e.clientX - drag.x)));
+      document.body.style.setProperty("--sidebar-w", next + "px");
+    });
+    var endDrag = function () {
+      if (!drag) return;
+      drag = null;
+      grip.classList.remove("dragging");
+      call("set_sidebar", !document.body.classList.contains("no-sidebar"),
+           currentWidth(), paneState);
+      if (mode === "image" && fitMode) { zoom = fitZoom(); render(); }
+    };
+    grip.addEventListener("pointerup", endDrag);
+    grip.addEventListener("pointercancel", endDrag);
+  }
 
   /* ------------------------------------------------------------------ */
   /* tabs                                                               */
@@ -1150,6 +1495,8 @@ ICONS = {
              '<path d="M12 3a9 9 0 000 18z" fill="currentColor" stroke="none"/></svg>',
     "reload": '<svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-2.6-6.4M21 3v5h-5"/></svg>',
     "open": '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>',
+    "panel": '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/>'
+             '<path d="M9 4v16"/></svg>',
 }
 
 
@@ -1170,6 +1517,25 @@ def style_menu_html(active: str) -> str:
     <div class="group">Style</div>
 {rows}
   </div>"""
+
+
+def sidebar_html() -> str:
+    """The shell. Both trees are painted by the viewer script from __MDV__."""
+    return """<div id="sidebar">
+  <section class="pane docs" id="paneDocs">
+    <header data-pane="docs"><span class="caret">&#9662;</span>
+      <span>Open documents</span><span class="count" id="docsCount"></span></header>
+    <div class="tree" id="docsTree"></div>
+  </section>
+  <section class="pane files" id="paneFiles">
+    <header data-pane="files"><span class="caret">&#9662;</span>
+      <span>Computer</span>
+      <button class="reveal" id="revealBtn" type="button"
+              title="Reveal the open document">&#9678;</button></header>
+    <div class="tree" id="filesTree"></div>
+  </section>
+</div>
+<div id="sideResize" title="Drag to resize"></div>"""
 
 
 def tabs_html(tabs: list[dict], active: int) -> str:
@@ -1206,6 +1572,7 @@ def toolbar_html(title: str, subtitle: str, can_go_back: bool, mode: str, style:
     label = html.escape(title)
     sub = f' <span style="color:var(--fg-faint)">{html.escape(subtitle)}</span>' if subtitle else ""
     return f"""<div id="bar">
+  <button class="tb" id="sidebarBtn" title="Toggle sidebar (Ctrl+B)">{ICONS["panel"]}</button>
   <button class="tb" id="backBtn" title="Back ([)"{back_disabled}>{ICONS["back"]}</button>
   <button class="tb" id="openBtn" title="Open file (Ctrl+O)">{ICONS["open"]}</button>
   <button class="tb" id="reloadBtn" title="Rebuild this tab from disk (F5)">{ICONS["reload"]}</button>
@@ -1230,18 +1597,26 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
                base: Path | None, can_go_back: bool,
                with_mermaid: bool, vector: bool = False,
                view_box: tuple[float, float] | None = None,
-               tabs: list[dict] | None = None, active_tab: int = 0) -> str:
+               tabs: list[dict] | None = None, active_tab: int = 0,
+               sidebar: dict | None = None) -> str:
     """Assemble a complete, self-contained HTML page for the webview."""
     if style not in STYLES:
         style = STYLES[0]
     tabs = tabs or []
     single = len(tabs) <= 1
+    sidebar = sidebar or {}
+    hidden = not sidebar.get("visible", True)
+    width = int(sidebar.get("width") or 264)
     cfg = {
         "mode": mode, "zoom": zoom, "fit": fit, "scroll": scroll,
         "steps": list(ZOOM_STEPS), "vector": vector,
         "viewBox": list(view_box) if view_box else None,
         "styles": list(STYLES),
         "tabCount": len(tabs), "activeTab": active_tab,
+        "docsTree": sidebar.get("docs") or [],
+        "filesTree": sidebar.get("files") or [],
+        "panes": sidebar.get("panes") or {},
+        "sidebarWidth": width,
     }
     base_tag = f'<base href="{html.escape(base.as_uri() + "/", quote=True)}">' if base else ""
 
@@ -1270,8 +1645,10 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
 {pygments_css()}
 </style>
 </head>
-<body class="mode-{mode}{' single-tab' if single else ''}">
+<body class="mode-{mode}{' single-tab' if single else ''}{' no-sidebar' if hidden else ''}"
+      style="--sidebar-w: {width}px">
 {toolbar_html(title, subtitle, can_go_back, mode, style)}
+{sidebar_html()}
 {tabs_html(tabs, active_tab)}
 <div id="scroller"><div id="content">{body}</div></div>
 <div id="toast"></div>
@@ -1362,6 +1739,219 @@ def svg_dimensions(path: Path) -> tuple[float, float] | None:
         return None
 
 
+# --------------------------------------------------------------------------- #
+# Sidebar trees
+# --------------------------------------------------------------------------- #
+
+TREE_CHILD_LIMIT = 500   # a directory listing this long is already unreadable
+TREE_MAX_DEPTH = 24
+
+
+def _is_hidden(entry: os.DirEntry) -> bool:
+    """Skip dot-files and, on Windows, hidden/system entries."""
+    if entry.name.startswith("."):
+        return True
+    if sys.platform == "win32":
+        try:
+            attrs = entry.stat(follow_symlinks=False).st_file_attributes
+        except (OSError, AttributeError):
+            return False
+        FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM = 0x2, 0x4
+        return bool(attrs & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))
+    return False
+
+
+def dir_entries(path: Path) -> tuple[list[dict], int]:
+    """Sub-directories and viewable files of `path`, plus a truncation count.
+
+    Only viewable files are listed: this tree exists to find something to open,
+    and hiding the rest keeps it short.
+    """
+    try:
+        with os.scandir(path) as scan:
+            raw = list(scan)
+    except (OSError, ValueError):
+        return [], 0
+
+    dirs: list[dict] = []
+    files: list[dict] = []
+    for entry in raw:
+        try:
+            if _is_hidden(entry):
+                continue
+            if entry.is_dir(follow_symlinks=False):
+                dirs.append({"name": entry.name, "path": entry.path, "dir": True})
+            elif Path(entry.name).suffix.lower() in VIEWABLE_EXTS:
+                files.append({"name": entry.name, "path": entry.path, "dir": False})
+        except OSError:
+            continue
+
+    key = lambda item: item["name"].lower()  # noqa: E731
+    dirs.sort(key=key)
+    files.sort(key=key)
+    merged = dirs + files
+    if len(merged) > TREE_CHILD_LIMIT:
+        return merged[:TREE_CHILD_LIMIT], len(merged) - TREE_CHILD_LIMIT
+    return merged, 0
+
+
+def documents_anchor(doc_paths: list[Path]) -> Path | None:
+    """The deepest folder containing every open document.
+
+    Deliberately derived from all open documents rather than the active one: a
+    root that changed identity on every tab switch would move out from under
+    whatever the reader had just expanded.
+    """
+    parents = [str(p.parent) for p in doc_paths if p is not None]
+    if not parents:
+        return None
+    try:
+        return Path(os.path.commonpath(parents))
+    except ValueError:
+        return Path(parents[0])       # spread across drives; anchor on the first
+
+
+def filesystem_roots(doc_paths: list[Path] | None = None) -> list[dict]:
+    """Starting points for the computer tree."""
+    roots: list[dict] = []
+    seen: set[str] = set()
+
+    def add(label: str, path: Path | None) -> None:
+        if path is None:
+            return
+        try:
+            if not path.is_dir():
+                return
+            key = str(path.resolve()).lower()
+        except OSError:
+            return
+        if key in seen:
+            return
+        seen.add(key)
+        roots.append({"name": label, "path": str(path), "dir": True})
+
+    anchor = documents_anchor(doc_paths or [])
+    if anchor is not None:
+        add(f"{anchor.name or anchor} (open documents)", anchor)
+    home = Path.home()
+    add("Home", home)
+    for folder in ("Desktop", "Documents", "Downloads"):
+        add(folder, home / folder)
+
+    if sys.platform == "win32":
+        for letter in _windows_drives():
+            add(f"{letter}:\\", Path(f"{letter}:\\"))
+    else:
+        add("/", Path("/"))
+    return roots
+
+
+def _windows_drives() -> list[str]:
+    try:
+        import ctypes
+        mask = ctypes.windll.kernel32.GetLogicalDrives()
+        return [chr(ord("A") + i) for i in range(26) if mask >> i & 1]
+    except Exception:
+        return [c for c in "CDEFGHIJKLMNOPQRSTUVWXYZ" if Path(f"{c}:\\").is_dir()]
+
+
+def build_fs_tree(doc_paths: list[Path] | None, expanded: set[Path]) -> list[dict]:
+    """Roots plus the children of every expanded directory, rendered eagerly.
+
+    Server-rendering the open branches means the tree is complete the moment
+    the page appears; everything deeper is fetched on demand from the bridge.
+    """
+    def node_for(entry: dict, depth: int) -> dict:
+        node = dict(entry)
+        if not node.get("dir"):
+            return node
+        try:
+            is_open = Path(node["path"]) in expanded
+        except (OSError, ValueError):
+            is_open = False
+        node["open"] = is_open
+        if is_open and depth < TREE_MAX_DEPTH:
+            children, more = dir_entries(Path(node["path"]))
+            node["children"] = [node_for(child, depth + 1) for child in children]
+            if more:
+                node["more"] = more
+        return node
+
+    return [node_for(root, 0) for root in filesystem_roots(doc_paths)]
+
+
+def build_doc_tree(tabs: list, active: int, stale: set[Path]) -> list[dict]:
+    """The open documents, arranged by their own directory structure.
+
+    Only directories that actually contain an open document appear, and chains
+    of single sub-directories are folded into one row so the tree stays short.
+    """
+    entries = [(i, tab.path) for i, tab in enumerate(tabs) if tab.path is not None]
+    if not entries:
+        return []
+
+    groups: dict[str, list[tuple[int, Path]]] = {}
+    for index, path in entries:
+        groups.setdefault(path.anchor or "/", []).append((index, path))
+
+    roots: list[dict] = []
+    for anchor in sorted(groups):
+        items = groups[anchor]
+        parents = [str(path.parent) for _, path in items]
+        try:
+            base = Path(os.path.commonpath(parents))
+        except ValueError:
+            base = Path(anchor)
+        root = {"name": str(base), "path": str(base), "dir": True, "open": True,
+                "root": True, "children": []}
+        for index, path in items:
+            try:
+                parts = path.relative_to(base).parts
+            except ValueError:
+                parts = (path.name,)
+            cursor = root
+            for part in parts[:-1]:
+                child = next((c for c in cursor["children"]
+                              if c.get("dir") and c["name"] == part), None)
+                if child is None:
+                    child = {"name": part, "path": str(Path(cursor["path"]) / part),
+                             "dir": True, "open": True, "children": []}
+                    cursor["children"].append(child)
+                cursor = child
+            cursor["children"].append({
+                "name": path.name, "path": str(path), "dir": False,
+                "tab": index, "active": index == active, "stale": path in stale,
+            })
+        _sort_tree(root)
+        _compact_tree(root)
+        roots.append(root)
+    return roots
+
+
+def _sort_tree(node: dict) -> None:
+    children = node.get("children")
+    if not children:
+        return
+    children.sort(key=lambda c: (not c.get("dir"), c["name"].lower()))
+    for child in children:
+        _sort_tree(child)
+
+
+def _compact_tree(node: dict) -> None:
+    """Fold a directory whose only child is a directory into a single row."""
+    children = node.get("children")
+    if not children:
+        return
+    for child in children:
+        _compact_tree(child)
+    while (len(children) == 1 and children[0].get("dir")
+           and not node.get("root") and children[0].get("children")):
+        only = children[0]
+        node["name"] = f"{node['name']}{os.sep}{only['name']}"
+        node["path"] = only["path"]
+        node["children"] = children = only["children"]
+
+
 # Parsed documents, keyed by (path, mtime). Switching tabs should not re-parse
 # markdown or re-run pygments; only a real change or an explicit refresh should.
 _DOC_CACHE: dict[tuple[str, float | None], dict] = {}
@@ -1432,7 +2022,8 @@ def _parse_document(path: Path) -> dict:
 
 def render_document(path: Path, *, style: str, zoom: float, fit: bool,
                     scroll: float, can_go_back: bool,
-                    tabs: list[dict] | None = None, active_tab: int = 0) -> str:
+                    tabs: list[dict] | None = None, active_tab: int = 0,
+                    sidebar: dict | None = None) -> str:
     parts = document_parts(path)
     return build_page(
         body=parts["body"], title=path.name, subtitle=parts["subtitle"],
@@ -1442,11 +2033,12 @@ def render_document(path: Path, *, style: str, zoom: float, fit: bool,
         base=parts["base"], can_go_back=can_go_back,
         with_mermaid=parts["with_mermaid"], vector=parts["vector"],
         view_box=parts["view_box"], tabs=tabs, active_tab=active_tab,
+        sidebar=sidebar,
     )
 
 
 def render_welcome(style: str, tabs: list[dict] | None = None,
-                   active_tab: int = 0) -> str:
+                   active_tab: int = 0, sidebar: dict | None = None) -> str:
     body = """
 <div class="mdv-center"><div class="inner">
   <div class="glyph">&#128196;</div>
@@ -1467,13 +2059,13 @@ def render_welcome(style: str, tabs: list[dict] | None = None,
     return build_page(
         body=body, title="md-view", mode="blank", style=style, zoom=1.0,
         fit=False, scroll=0.0, base=None, can_go_back=False, with_mermaid=False,
-        tabs=tabs, active_tab=active_tab,
+        tabs=tabs, active_tab=active_tab, sidebar=sidebar,
     )
 
 
 def render_error(title: str, message: str, style: str,
                  tabs: list[dict] | None = None, active_tab: int = 0,
-                 can_go_back: bool = True) -> str:
+                 can_go_back: bool = True, sidebar: dict | None = None) -> str:
     body = (
         f'<div class="mdv-center"><div class="inner"><div class="glyph">&#9888;</div>'
         f"<h1>{html.escape(title)}</h1><p>{html.escape(message)}</p>"
@@ -1483,7 +2075,7 @@ def render_error(title: str, message: str, style: str,
     return build_page(
         body=body, title=title, mode="blank", style=style, zoom=1.0, fit=False,
         scroll=0.0, base=None, can_go_back=can_go_back, with_mermaid=False,
-        tabs=tabs, active_tab=active_tab,
+        tabs=tabs, active_tab=active_tab, sidebar=sidebar,
     )
 
 
@@ -1556,6 +2148,23 @@ class Viewer:
         self._mtimes: dict[Path, float] = {}
         self._stale: set[Path] = set()
         self._capture_failures = 0
+
+        # Sidebar state lives here, not in the page: every navigation rebuilds
+        # the document, and expanded folders must survive that.
+        self.sidebar_visible = bool(self.prefs.get("sidebar", True))
+        self.sidebar_width = int(self.prefs.get("sidebar_width") or 264)
+        self.panes = dict(self.prefs.get("panes") or {})
+        self.expanded: set[Path] = set()
+        for item in self.prefs.get("expanded") or []:
+            try:
+                candidate = Path(item)
+                if candidate.is_dir():
+                    self.expanded.add(candidate)
+            except (OSError, ValueError):
+                continue
+        anchor = documents_anchor([t.path for t in self.tabs if t.path])
+        if anchor is not None:
+            self.expanded.add(anchor)         # start where the documents live
         self._stop = threading.Event()
         self._window = None
         self._server = None
@@ -1619,34 +2228,50 @@ class Viewer:
         return [t.describe(stale=t.path is not None and t.path in self._stale)
                 for t in self.tabs]
 
+    def _sidebar(self) -> dict:
+        """Everything the two trees need, resolved at page-build time."""
+        try:
+            files = build_fs_tree([t.path for t in self.tabs if t.path], self.expanded)
+        except Exception:
+            files = []          # an unreadable drive must not blank the page
+        return {
+            "visible": self.sidebar_visible,
+            "width": self.sidebar_width,
+            "panes": self.panes,
+            "docs": build_doc_tree(self.tabs, self.active, self._stale),
+            "files": files,
+        }
+
     def _page_for(self, tab: Tab, scroll: float) -> str:
         tabs, active = self._tab_dicts(), self.active
+        side = self._sidebar()
         path = tab.path
         if path is None:
-            return render_welcome(self.style, tabs, active)
+            return render_welcome(self.style, tabs, active, side)
         try:
             if not path.exists():
                 return render_error("File not found", str(path), self.style, tabs, active,
-                                    can_go_back=bool(tab.history))
+                                    can_go_back=bool(tab.history), sidebar=side)
             if path.is_dir():
                 return render_error("That is a folder", str(path), self.style, tabs, active,
-                                    can_go_back=bool(tab.history))
+                                    can_go_back=bool(tab.history), sidebar=side)
             html_text = render_document(
                 path, style=self.style, zoom=self.zoom, fit=self.fit,
                 scroll=scroll, can_go_back=bool(tab.history),
-                tabs=tabs, active_tab=active,
+                tabs=tabs, active_tab=active, sidebar=side,
             )
             if not self.mermaid_enabled:
                 html_text = html_text.replace("__mdv_mermaidReady()", "void 0")
             return html_text
         except OSError as exc:
-            return render_error("Cannot read this file", str(exc), self.style, tabs, active)
+            return render_error("Cannot read this file", str(exc), self.style, tabs, active,
+                                sidebar=side)
         except Exception as exc:  # a bad document must not take the viewer down
             if self.debug:
                 import traceback
                 traceback.print_exc()
             return render_error("Failed to render", f"{type(exc).__name__}: {exc}",
-                                self.style, tabs, active)
+                                self.style, tabs, active, sidebar=side)
 
     def _paint(self, *, scroll: float | None = None) -> str:
         """Render the active tab into the window. Caller must hold _nav."""
@@ -1914,8 +2539,57 @@ class Viewer:
             shutil.rmtree(self._tmpdir, ignore_errors=True)
 
     def _persist(self) -> None:
-        self.prefs.update({"style": self.style, "zoom": round(self.zoom, 4), "fit": self.fit})
+        self.prefs.update({
+            "style": self.style, "zoom": round(self.zoom, 4), "fit": self.fit,
+            "sidebar": self.sidebar_visible, "sidebar_width": self.sidebar_width,
+            "panes": self.panes,
+            # Keep the list bounded: an unbounded set would grow forever.
+            "expanded": sorted(str(p) for p in list(self.expanded)[:400]),
+        })
         save_prefs(self.prefs)
+
+    # -- sidebar ----------------------------------------------------------- #
+
+    def set_expanded(self, paths: list[str]) -> None:
+        """Replace the expanded-folder set from the page."""
+        fresh: set[Path] = set()
+        for item in paths or []:
+            try:
+                fresh.add(Path(item))
+            except (TypeError, ValueError):
+                continue
+        self.expanded = fresh
+        self._persist()
+
+    def open_from_tree(self, raw: str) -> bool:
+        """Open a file picked in the computer tree, always in its own tab."""
+        try:
+            path = Path(raw)
+        except (TypeError, ValueError):
+            return False
+        if path.is_dir():
+            self.expanded.add(path)
+            self._persist()
+            return False
+        if not path.exists():
+            return False
+        if path.suffix.lower() in VIEWABLE_EXTS:
+            self.open_tab(path)
+            return True
+        _os_open(path)
+        return False
+
+    def reveal_current(self) -> bool:
+        """Expand every ancestor of the active document, then repaint."""
+        path = self.current
+        if path is None:
+            return False
+        for parent in path.parents:
+            self.expanded.add(parent)
+        self._persist()
+        with self._nav:
+            self._paint()
+        return True
 
 
 class Api:
@@ -1998,6 +2672,42 @@ class Api:
         else:
             self._viewer.show(chosen[0])
         return str(chosen[0])
+
+    # sidebar trees
+    def list_dir(self, path: str):
+        """Children of a folder, for lazy expansion. Never raises into JS."""
+        try:
+            target = Path(path)
+            if not target.is_dir():
+                return {"path": path, "entries": [], "more": 0, "denied": True}
+            entries, more = dir_entries(target)
+            return {"path": path, "entries": entries, "more": more, "denied": False}
+        except (OSError, ValueError):
+            return {"path": path, "entries": [], "more": 0, "denied": True}
+
+    def set_expanded(self, paths: list):
+        self._viewer.set_expanded(list(paths or []))
+        return True
+
+    def open_from_tree(self, path: str):
+        return self._viewer.open_from_tree(path)
+
+    def set_sidebar(self, visible: bool = True, width: int = 0, panes: dict | None = None):
+        viewer = self._viewer
+        viewer.sidebar_visible = bool(visible)
+        try:
+            if width:
+                viewer.sidebar_width = max(160, min(640, int(width)))
+        except (TypeError, ValueError):
+            pass
+        if isinstance(panes, dict):
+            viewer.panes = {k: bool(v) for k, v in panes.items()}
+        viewer._persist()
+        return True
+
+    def reveal_active(self):
+        """Expand the computer tree down to the document on screen."""
+        return self._viewer.reveal_current()
 
     # window
     def close_window(self):
