@@ -1,0 +1,11 @@
+id,product,category,qty,unit_price,supplier,updated
+1,Widget,hardware,12,4.50,Acme Tooling,2026-07-01
+2,Grommet,hardware,340,0.12,Acme Tooling,2026-07-03
+3,Sprocket assembly,hardware,7,88.00,Northwind Parts,2026-06-28
+4,Cable (2m),electrical,55,3.75,Volt & Co,2026-07-11
+5,Cable (5m),electrical,31,6.20,Volt & Co,2026-07-11
+6,Terminal block,electrical,180,1.05,Volt & Co,2026-07-02
+7,"Bracket, angled",hardware,64,2.40,Northwind Parts,2026-07-09
+8,Gasket set,consumable,1200,0.03,Sealtech,2026-06-15
+9,Lubricant 500ml,consumable,48,9.99,Sealtech,2026-07-14
+10,Inspection light,tooling,3,145.00,Northwind Parts,2026-05-30
