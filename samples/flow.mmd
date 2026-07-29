@@ -1,0 +1,21 @@
+flowchart TB
+    subgraph launch["Contextual launch"]
+        E[Explorer double-click] --> P[pythonw md-view.py file]
+    end
+
+    P --> C{classify by extension}
+    C -->|.md .markdown| M[Python-Markdown<br/>+ mermaid fences]
+    C -->|.mmd .mermaid| D[single mermaid diagram]
+    C -->|.svg| S[vector image canvas]
+    C -->|.png .jpg .gif ...| R[raster image canvas]
+    C -->|.txt .json ...| T[verbatim text]
+
+    M --> H[HTML page in temp dir]
+    D --> H
+    S --> H
+    R --> H
+    T --> H
+
+    H --> W[["WebView2 window"]]
+    W --> Z[/"zoom: Ctrl +/- , wheel, fit"/]
+    W --> F[/"watch mtime, auto-reload"/]
