@@ -13,7 +13,21 @@ import subprocess
 import sys
 from pathlib import Path
 
-from setuptools import Command, setup
+try:
+    from setuptools import Command, setup
+except ImportError:
+    # Virtual environments on Python 3.12+ no longer include setuptools.
+    sys.exit(
+        "setup.py needs setuptools, which this environment does not have:\n"
+        "    python -m pip install setuptools\n"
+        "\n"
+        "You do not need it to use md-view, though. The equivalents below run on\n"
+        "the standard library alone:\n"
+        "    python md-view.py --register              (= setup.py register)\n"
+        "    python md-view.py --unregister            (= setup.py register --undo)\n"
+        "    python md-view.py --fetch-assets          (= setup.py fetch_assets)\n"
+        "    python -m pip install -r requirements.txt (= setup.py develop_local)\n"
+    )
 
 HERE = Path(__file__).resolve().parent
 
@@ -161,7 +175,6 @@ setup(
         "Development Status :: 4 - Beta",
         "Environment :: Win32 (MS Windows)",
         "Intended Audience :: Developers",
-        "License :: OSI Approved :: MIT License",
         "Operating System :: Microsoft :: Windows",
         "Operating System :: POSIX :: Linux",
         "Operating System :: MacOS :: MacOS X",

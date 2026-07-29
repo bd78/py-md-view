@@ -25,18 +25,23 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-or, equivalently, through `setup.py`:
+Then the two optional setup steps, both of which need nothing beyond the
+standard library:
 
 ```powershell
-python setup.py develop_local      # install the runtime dependencies
-python setup.py fetch_assets       # cache mermaid.js for offline diagrams
-python setup.py register            # associate .md / .mmd (Windows)
+.\.venv\Scripts\python.exe md-view.py --fetch-assets   # cache mermaid.js offline
+.\.venv\Scripts\python.exe md-view.py --register       # associate .md / .mmd
 ```
+
+`setup.py` wraps the same steps as `fetch_assets`, `register` and
+`develop_local`, but it needs `setuptools` — which virtual environments on
+Python 3.12+ no longer include. Either `pip install setuptools` first, or just
+use the `md-view.py` flags above; they are the same code paths.
 
 Mermaid rendering needs `mermaid.min.js` (~3.5 MB). It is downloaded on first
 use and cached in `%LOCALAPPDATA%\md-view\assets\`. Fetch it ahead of time with
-`md-view.py --fetch-assets`, or drop your own copy in `./assets/mermaid.min.js`
-to ship it alongside the script. Everything else works with no network at all.
+`--fetch-assets`, or drop your own copy in `./assets/mermaid.min.js` to ship it
+alongside the script. Everything else works with no network at all.
 
 ## Use
 
@@ -127,6 +132,11 @@ md-view”** right-click entry for those plus every supported image type. Image
 defaults are deliberately left alone.
 
 It launches through `pythonw.exe` when available, so no console window flashes.
+
+The registry stores absolute paths to both the interpreter and the script — run
+it from your `.venv` and the association uses that venv, dependencies included.
+Moving or deleting either path breaks the association; re-run `--register` after
+moving the project to record the new location.
 
 If Windows still opens another app for `.md` afterwards, that extension already
 has a saved *UserChoice*, which only you can change: right-click a file →
