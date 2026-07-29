@@ -14,9 +14,10 @@ a window opens fast enough to sit behind a file association.
 |------|-----------|-------|
 | Markdown | `.md` `.markdown` `.mdown` `.mkd` `.mkdn` `.mdtext` | tables, footnotes, task lists, admonitions, definition lists, syntax highlighting, and ` ```mermaid ` blocks rendered as diagrams |
 | Mermaid | `.mmd` `.mermaid` | the whole file is one diagram |
+| Delimited | `.csv` `.tsv` `.tab` | one colour per column, with optional column alignment |
 | Vector | `.svg` `.svgz` | scales as vector at any zoom |
 | Raster | `.png` `.jpg` `.jpeg` `.gif` `.webp` `.bmp` `.ico` `.apng` `.avif` | zoom and drag to pan |
-| Text | `.txt` `.log` `.json` `.yml` `.toml` `.ini` `.csv` `.rst` | shown verbatim |
+| Text | `.txt` `.log` `.json` `.yml` `.toml` `.ini` `.rst` | shown verbatim |
 
 ## Install
 
@@ -67,14 +68,17 @@ Opening a file that is already in a tab just focuses that tab.
 
 The left sidebar holds two independent trees. Toggle the whole thing with
 <kbd>Ctrl</kbd>+<kbd>B</kbd> or the toolbar's panel button, drag its right edge
-to resize, and click either pane's header to collapse just that pane. Width,
-visibility, collapsed panes and expanded folders are all remembered.
+to resize, and click either pane's header to collapse just that pane. Drag the
+separator between the two trees to change how the height is split, or
+double-click it to go back to the default. Width, the split, visibility,
+collapsed panes and expanded folders are all remembered.
 
 **Open documents** — the files you have open, arranged by their own directory
 structure. Only folders that actually contain an open document appear, and
 chains of single sub-directories are folded into one row, so the tree stays
 short. Clicking a document switches to its tab; the active one is highlighted
-and a file changed on disk shows the same dot as its tab.
+and a file changed on disk shows the same dot as its tab. Each document carries
+a × on its right to close it, mirroring the tab strip.
 
 **Computer** — browse for something to open. Clicking a file opens it in a new
 tab; anything md-view cannot display is handed to the OS. The roots are the
@@ -119,6 +123,35 @@ mermaid theme. Pick one from the toolbar's style menu, cycle with
 The choice is remembered, along with your zoom level, in
 `%LOCALAPPDATA%\md-view\prefs.json`. Without a saved preference the viewer
 follows the OS light/dark setting.
+
+### Delimited files
+
+`.csv`, `.tsv` and `.tab` files are rendered with **one colour per column**,
+cycling through ten hues that adapt to the current style — the same idea as
+Rainbow CSV. The delimiter is sniffed from the content (comma, semicolon, tab or
+pipe; `.tsv`/`.tab` always mean tab), quoted fields containing delimiters or
+newlines are handled properly, and the first row is shown in bold.
+
+The **align button** in the toolbar — it appears only while a delimited file is
+open — pads every field so the columns line up vertically. Turn it off to see the
+file's own spacing again. The choice is remembered.
+
+The file is shown as monospaced text rather than as a table, so its real shape
+stays visible and alignment remains something you choose. Very wide files scroll
+horizontally, and a file longer than 5,000 rows is cut off with a note saying so.
+
+### Fonts
+
+The **Aa** menu in the toolbar picks the body typeface:
+
+- **System** — whatever the current style specifies
+- **Sans** — the system UI sans
+- **Serif** — Georgia / Cambria, with slightly looser leading
+- **Monospace** — the code face throughout
+
+Code blocks stay monospaced regardless. Switching is instant: it swaps one
+attribute and changes no content, so nothing re-renders. `--font serif` sets it
+from the command line, and the choice is remembered.
 
 ### Zoom
 

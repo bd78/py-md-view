@@ -41,10 +41,11 @@ MARKDOWN_EXTS = {".md", ".markdown", ".mdown", ".mkd", ".mkdn", ".mdtext"}
 MERMAID_EXTS = {".mmd", ".mermaid"}
 RASTER_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".apng", ".avif"}
 SVG_EXTS = {".svg", ".svgz"}
-TEXT_EXTS = {".txt", ".text", ".log", ".rst", ".csv", ".json", ".yml", ".yaml", ".toml", ".ini"}
+CSV_EXTS = {".csv", ".tsv", ".tab"}
+TEXT_EXTS = {".txt", ".text", ".log", ".rst", ".json", ".yml", ".yaml", ".toml", ".ini"}
 
 IMAGE_EXTS = RASTER_EXTS | SVG_EXTS
-VIEWABLE_EXTS = MARKDOWN_EXTS | MERMAID_EXTS | IMAGE_EXTS | TEXT_EXTS
+VIEWABLE_EXTS = MARKDOWN_EXTS | MERMAID_EXTS | IMAGE_EXTS | CSV_EXTS | TEXT_EXTS
 
 MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"
 
@@ -62,6 +63,14 @@ STYLE_PYGMENTS = {
     "dark": ("github-dark", "monokai", "native"),
     "github": ("github-light", "default"),
 }
+
+# Body typeface. "system" keeps whatever the chosen style specifies.
+FONTS = ("system", "sans", "serif", "mono")
+FONT_LABELS = {"system": "System", "sans": "Sans", "serif": "Serif", "mono": "Monospace"}
+
+# Rainbow CSV: one colour per column, cycling.
+CSV_COLOURS = 10
+CSV_MAX_ROWS = 5000
 
 
 # --------------------------------------------------------------------------- #
@@ -392,6 +401,32 @@ BASE_CSS = r"""
   --body-size: 16px; --body-leading: 1.5; --measure: 62rem;
 }
 
+/* ---------- typeface ----------
+   After the palettes on purpose: these match their specificity, so the later
+   rule wins. "system" has no rule at all -- it keeps the style's own stack. */
+:root[data-font="sans"] {
+  --font-sans: "Segoe UI Variable Text", -apple-system, "Segoe UI", system-ui,
+               Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+:root[data-font="serif"] {
+  --font-sans: Georgia, Cambria, "Iowan Old Style", "Palatino Linotype",
+               "Times New Roman", serif;
+  --body-leading: 1.7;
+}
+:root[data-font="mono"] { --font-sans: var(--font-mono); --body-size: 14px; }
+
+/* ---------- rainbow columns ---------- */
+:root {
+  --csv-0: #0b6bcb; --csv-1: #b45309; --csv-2: #15803d; --csv-3: #7c3aed;
+  --csv-4: #0e7490; --csv-5: #be123c; --csv-6: #a21caf; --csv-7: #4d7c0f;
+  --csv-8: #9a3412; --csv-9: #475569;
+}
+:root[data-style="dark"] {
+  --csv-0: #6cb6ff; --csv-1: #f0b849; --csv-2: #6fdd8b; --csv-3: #c297ff;
+  --csv-4: #56d4dd; --csv-5: #ff7b93; --csv-6: #f692ce; --csv-7: #b8e986;
+  --csv-8: #ffab70; --csv-9: #9aa8bd;
+}
+
 html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg); color: var(--fg);
@@ -486,8 +521,19 @@ body.single-tab { --chrome: 38px; }
 body.no-sidebar #sidebar { display: none; }
 
 .pane { display: flex; flex-direction: column; min-height: 0; }
-.pane.docs { flex: 0 1 auto; max-height: 45%; }
-.pane.files { flex: 1 1 auto; border-top: 1px solid var(--bar-border); }
+/* --docs-h arrives inline on <body>, like --sidebar-w, so the split persists. */
+.pane.docs { flex: 0 0 var(--docs-h, 220px); }
+.pane.docs.collapsed { flex: 0 0 auto; }
+.pane.files { flex: 1 1 auto; }
+
+/* the draggable separator between the two trees */
+#paneGrip {
+  flex: none; height: 6px; cursor: row-resize;
+  border-top: 1px solid var(--bar-border);
+}
+#paneGrip:hover, #paneGrip.dragging { background: var(--accent); opacity: .55; }
+.pane.docs.collapsed + #paneGrip { cursor: default; }
+.pane.docs.collapsed + #paneGrip:hover { background: transparent; opacity: 1; }
 .pane > header {
   display: flex; align-items: center; gap: 6px; padding: 7px 10px 6px;
   font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
@@ -539,6 +585,14 @@ body.no-sidebar #sidebar { display: none; }
   background: var(--accent); margin-left: 4px; visibility: hidden;
 }
 .row.stale .dot { visibility: visible; }
+.row .x {
+  flex: none; appearance: none; border: 0; background: transparent; color: inherit;
+  width: 17px; height: 17px; margin-left: auto; border-radius: 4px; cursor: pointer;
+  font: inherit; font-size: 13px; line-height: 1; display: grid; place-items: center;
+  opacity: 0;
+}
+.row:hover .x, .row.active .x { opacity: .55; }
+.row .x:hover { background: var(--btn-active); opacity: 1; }
 .node > .kids { display: none; }
 .node.open > .kids { display: block; }
 .row.more { color: var(--fg-faint); font-style: italic; cursor: default; }
@@ -701,6 +755,36 @@ body.mode-image #scroller.fits { overflow: hidden; }
     linear-gradient(45deg, rgba(128,128,128,.18) 25%, transparent 25% 75%, rgba(128,128,128,.18) 75%);
   background-size: 20px 20px; background-position: 0 0, 10px 10px;
 }
+
+/* ---------- delimited files ---------- */
+body.is-csv #content { max-width: none; padding: 18px 22px 40vh; }
+.csv-info {
+  color: var(--fg-muted); font-size: 12px; margin: 0 0 10px;
+  font-family: var(--font-sans);
+}
+.csv-info code {
+  background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 11px;
+}
+.csv-cut { margin: 10px 0 0; font-style: italic; }
+pre.csv {
+  background: var(--code-bg); border: 1px solid var(--border-soft);
+  border-radius: 8px; padding: 10px 12px; margin: 0;
+  overflow: auto; white-space: pre; font-size: .84em; line-height: 1.55;
+  tab-size: 4;
+}
+.csv-row { white-space: pre; }
+.csv-row:hover { background: var(--btn-hover); }
+.csv-head { font-weight: 700; }
+.csv-d { color: var(--fg-faint); }
+.c0 { color: var(--csv-0); } .c1 { color: var(--csv-1); }
+.c2 { color: var(--csv-2); } .c3 { color: var(--csv-3); }
+.c4 { color: var(--csv-4); } .c5 { color: var(--csv-5); }
+.c6 { color: var(--csv-6); } .c7 { color: var(--csv-7); }
+.c8 { color: var(--csv-8); } .c9 { color: var(--csv-9); }
+
+#alignBtn { display: none; }
+body.is-csv #alignBtn { display: grid; }
+#alignBtn[aria-pressed="true"] { background: var(--btn-active); color: var(--accent); }
 
 /* ---------- welcome / error ---------- */
 .mdv-center {
@@ -986,7 +1070,7 @@ VIEWER_JS = r"""
     }
     if (e.key === "F11") { e.preventDefault(); call("toggle_fullscreen"); return; }
     if (e.key === "Escape") {
-      if (menu && !menu.hidden) { openMenu(false); if (styleBtn) styleBtn.focus(); return; }
+      if (anyMenuOpen()) { closeMenus(null); return; }
       call("escape"); return;
     }
     if (!ctrl && !e.altKey) {
@@ -1074,6 +1158,17 @@ VIEWER_JS = r"""
     var dot = document.createElement("span");
     dot.className = "dot";
     row.appendChild(dot);
+
+    // Open documents get a close button, mirroring the tab strip.
+    if (kind === "docs" && !item.dir && typeof item.tab === "number") {
+      var x = document.createElement("button");
+      x.className = "x";
+      x.type = "button";
+      x.dataset.close = item.tab;
+      x.title = "Close " + item.name;
+      x.innerHTML = "&times;";
+      row.appendChild(x);
+    }
 
     node.appendChild(row);
 
@@ -1176,6 +1271,12 @@ VIEWER_JS = r"""
   function wireTree(container, kind) {
     if (!container) return;
     container.addEventListener("click", function (e) {
+      var closer = e.target.closest("button[data-close]");
+      if (closer) {
+        e.stopPropagation();
+        call("close_tab", parseInt(closer.dataset.close, 10));
+        return;
+      }
       var row = e.target.closest(".row");
       if (!row || row.classList.contains("more") || row.classList.contains("denied")) return;
       var node = row.parentElement;
@@ -1228,7 +1329,7 @@ VIEWER_JS = r"""
       paneState[name] = !paneState[name];
       applyPanes(paneState);
       call("set_sidebar", !document.body.classList.contains("no-sidebar"),
-           currentWidth(), paneState);
+           currentWidth(), paneState, currentDocsHeight());
     });
   });
 
@@ -1238,9 +1339,49 @@ VIEWER_JS = r"""
     return parseInt(raw, 10) || CFG.sidebarWidth || 264;
   }
 
+  function currentDocsHeight() {
+    var raw = document.body.style.getPropertyValue("--docs-h");
+    return parseInt(raw, 10) || CFG.docsHeight || 220;
+  }
+
+  /* ---- the separator between the two trees ---- */
+  var paneGrip = document.getElementById("paneGrip");
+  if (paneGrip && sidebar) {
+    var vdrag = null;
+    paneGrip.addEventListener("pointerdown", function (e) {
+      var docsPane = document.getElementById("paneDocs");
+      if (!docsPane || docsPane.classList.contains("collapsed")) return;
+      vdrag = { y: e.clientY, h: docsPane.offsetHeight };
+      paneGrip.classList.add("dragging");
+      paneGrip.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    paneGrip.addEventListener("pointermove", function (e) {
+      if (!vdrag) return;
+      // Leave room for the Computer pane's own header and a few rows.
+      var ceiling = Math.max(80, sidebar.clientHeight - 120);
+      var next = Math.max(60, Math.min(ceiling, vdrag.h + (e.clientY - vdrag.y)));
+      document.body.style.setProperty("--docs-h", next + "px");
+    });
+    var endVDrag = function () {
+      if (!vdrag) return;
+      vdrag = null;
+      paneGrip.classList.remove("dragging");
+      call("set_sidebar", !document.body.classList.contains("no-sidebar"),
+           currentWidth(), paneState, currentDocsHeight());
+    };
+    paneGrip.addEventListener("pointerup", endVDrag);
+    paneGrip.addEventListener("pointercancel", endVDrag);
+    paneGrip.addEventListener("dblclick", function () {
+      document.body.style.setProperty("--docs-h", "220px");   // back to the default
+      call("set_sidebar", !document.body.classList.contains("no-sidebar"),
+           currentWidth(), paneState, 220);
+    });
+  }
+
   function toggleSidebar() {
     var hidden = document.body.classList.toggle("no-sidebar");
-    call("set_sidebar", !hidden, currentWidth(), paneState);
+    call("set_sidebar", !hidden, currentWidth(), paneState, currentDocsHeight());
     if (mode === "image" && fitMode) { zoom = fitZoom(); render(); }
   }
   on("sidebarBtn", toggleSidebar);
@@ -1265,7 +1406,7 @@ VIEWER_JS = r"""
       drag = null;
       grip.classList.remove("dragging");
       call("set_sidebar", !document.body.classList.contains("no-sidebar"),
-           currentWidth(), paneState);
+           currentWidth(), paneState, currentDocsHeight());
       if (mode === "image" && fitMode) { zoom = fitZoom(); render(); }
     };
     grip.addEventListener("pointerup", endDrag);
@@ -1319,27 +1460,49 @@ VIEWER_JS = r"""
   /* ------------------------------------------------------------------ */
 
   var STYLES = CFG.styles || ["light", "dark", "github"];
+  var FONTS = CFG.fonts || ["system", "sans", "serif", "mono"];
   var MERMAID_THEME = { light: "neutral", dark: "dark", github: "default" };
-  var menu = document.getElementById("styleMenu");
-  var styleBtn = document.getElementById("styleBtn");
 
   function currentStyle() {
     return document.documentElement.dataset.style || STYLES[0];
   }
 
+  function currentFont() {
+    return document.documentElement.dataset.font || FONTS[0];
+  }
+
+  /* Mark the chosen row in a menu. */
+  function markMenu(menuEl, value) {
+    if (!menuEl) return;
+    menuEl.querySelectorAll("button[data-value]").forEach(function (b) {
+      b.setAttribute("aria-checked", b.dataset.value === value ? "true" : "false");
+    });
+  }
+
   function applyStyle(name, opts) {
     if (STYLES.indexOf(name) < 0) return;
     document.documentElement.dataset.style = name;
-    if (menu) {
-      menu.querySelectorAll("button[data-style]").forEach(function (b) {
-        b.setAttribute("aria-checked", b.dataset.style === name ? "true" : "false");
-      });
-    }
-    if (styleBtn) styleBtn.title = "Style: " + name + " (Ctrl+D cycles)";
+    markMenu(document.getElementById("styleMenu"), name);
+    var btn = document.getElementById("styleBtn");
+    if (btn) btn.title = "Style: " + name + " (Ctrl+D cycles)";
     renderMermaid(name);
     if (!(opts && opts.silent)) persist();
   }
   window.__mdv_setStyle = applyStyle;
+
+  /* Font is pure CSS: swap the attribute, no repaint, no re-render. */
+  function applyFont(name, opts) {
+    if (FONTS.indexOf(name) < 0) return;
+    document.documentElement.dataset.font = name;
+    markMenu(document.getElementById("fontMenu"), name);
+    var btn = document.getElementById("fontBtn");
+    if (btn) btn.title = "Font: " + name;
+    if (!(opts && opts.silent)) {
+      call("set_font", name);
+      if (mode === "image" && fitMode) { zoom = fitZoom(); render(); }
+    }
+  }
+  window.__mdv_setFont = applyFont;
 
   function cycleStyle() {
     var next = STYLES[(STYLES.indexOf(currentStyle()) + 1) % STYLES.length];
@@ -1347,41 +1510,78 @@ VIEWER_JS = r"""
     toast(next.charAt(0).toUpperCase() + next.slice(1));
   }
 
-  function openMenu(open) {
-    if (!menu || !styleBtn) return;
-    var show = open === undefined ? menu.hidden : open;
-    menu.hidden = !show;
-    styleBtn.setAttribute("aria-expanded", show ? "true" : "false");
+  /* ---- generic popup menus ---- */
+
+  function closeMenus(except) {
+    Array.prototype.forEach.call(document.querySelectorAll(".menu"), function (m) {
+      if (m === except) return;
+      m.hidden = true;
+      var owner = document.querySelector('[data-menu="' + m.id + '"]');
+      if (owner) owner.setAttribute("aria-expanded", "false");
+    });
+  }
+
+  function openMenu(menuEl, open) {
+    if (!menuEl) return;
+    var owner = document.querySelector('[data-menu="' + menuEl.id + '"]');
+    var show = open === undefined ? menuEl.hidden : open;
+    if (show) closeMenus(menuEl);
+    menuEl.hidden = !show;
+    if (owner) owner.setAttribute("aria-expanded", show ? "true" : "false");
     if (show) {
-      var active = menu.querySelector('button[aria-checked="true"]') ||
-                   menu.querySelector("button[data-style]");
+      var active = menuEl.querySelector('button[aria-checked="true"]') ||
+                   menuEl.querySelector("button[data-value]");
       if (active) active.focus();
     }
   }
 
-  if (styleBtn) {
-    styleBtn.addEventListener("click", function (e) { e.stopPropagation(); openMenu(); });
+  function applyChoice(kind, value) {
+    if (kind === "style") applyStyle(value);
+    else if (kind === "font") applyFont(value);
   }
-  if (menu) {
-    menu.addEventListener("click", function (e) {
-      var b = e.target.closest("button[data-style]");
-      if (!b) return;
-      applyStyle(b.dataset.style);
-      openMenu(false);
-      if (styleBtn) styleBtn.focus();
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-menu]"), function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      openMenu(document.getElementById(btn.dataset.menu));
     });
-    menu.addEventListener("keydown", function (e) {
-      var items = Array.prototype.slice.call(menu.querySelectorAll("button[data-style]"));
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll(".menu"), function (menuEl) {
+    menuEl.addEventListener("click", function (e) {
+      var b = e.target.closest("button[data-value]");
+      if (!b) return;
+      applyChoice(menuEl.dataset.kind, b.dataset.value);
+      openMenu(menuEl, false);
+      var owner = document.querySelector('[data-menu="' + menuEl.id + '"]');
+      if (owner) owner.focus();
+    });
+    menuEl.addEventListener("keydown", function (e) {
+      var items = Array.prototype.slice.call(menuEl.querySelectorAll("button[data-value]"));
       var at = items.indexOf(document.activeElement);
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
-        var next = (at + (e.key === "ArrowDown" ? 1 : items.length - 1) + items.length) % items.length;
+        var next = (at + (e.key === "ArrowDown" ? 1 : items.length - 1) + items.length)
+                   % items.length;
         items[next].focus();
       }
     });
-  }
+  });
+
   document.addEventListener("click", function (e) {
-    if (menu && !menu.hidden && !e.target.closest(".menu-wrap")) openMenu(false);
+    if (!e.target.closest(".menu-wrap")) closeMenus(null);
+  });
+
+  function anyMenuOpen() {
+    return !!document.querySelector(".menu:not([hidden])");
+  }
+
+  /* ---- csv column alignment ---- */
+  on("alignBtn", function () {
+    var btn = document.getElementById("alignBtn");
+    if (btn) btn.setAttribute("aria-pressed",
+      btn.getAttribute("aria-pressed") === "true" ? "false" : "true");
+    call("toggle_csv_align");
   });
 
   /* ------------------------------------------------------------------ */
@@ -1470,6 +1670,7 @@ VIEWER_JS = r"""
   /* ------------------------------------------------------------------ */
 
   applyStyle(currentStyle(), { silent: true });
+  applyFont(currentFont(), { silent: true });
   render();
   if (CFG.scroll && mode !== "image") {
     requestAnimationFrame(function () {
@@ -1497,26 +1698,31 @@ ICONS = {
     "open": '<svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>',
     "panel": '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/>'
              '<path d="M9 4v16"/></svg>',
+    "font": '<svg viewBox="0 0 24 24"><path d="M4 19l6-14 6 14M6.5 14h7M16 19h4"/></svg>',
+    "align": '<svg viewBox="0 0 24 24"><path d="M4 6h6M4 12h6M4 18h6'
+             'M14 6h6M14 12h6M14 18h6"/></svg>',
 }
 
 
-def style_menu_html(active: str) -> str:
+def choice_menu_html(menu_id: str, kind: str, heading: str, options: list[tuple[str, str]],
+                     active: str, *, swatches: bool = False,
+                     keys: bool = True) -> str:
+    """A radio-style popup menu. `options` is a list of (value, label)."""
     items = []
-    for index, name in enumerate(STYLES, start=1):
-        checked = "true" if name == active else "false"
+    for index, (value, label) in enumerate(options, start=1):
+        checked = "true" if value == active else "false"
+        swatch = f'<span class="swatch s-{value}"></span>' if swatches else '<span></span>'
+        hint = f'<span class="key">{index}</span>' if keys else "<span></span>"
         items.append(
-            f'    <button type="button" role="menuitemradio" data-style="{name}" '
-            f'aria-checked="{checked}">'
-            f'<span class="swatch s-{name}"></span>'
-            f'<span>{STYLE_LABELS[name]}</span>'
-            f'<span class="key">{index}</span>'
+            f'    <button type="button" role="menuitemradio" data-value="{value}" '
+            f'aria-checked="{checked}">{swatch}'
+            f'<span>{html.escape(label)}</span>{hint}'
             f'<span class="tick"></span></button>'
         )
     rows = "\n".join(items)
-    return f"""<div class="menu" id="styleMenu" role="menu" aria-label="Style" hidden>
-    <div class="group">Style</div>
-{rows}
-  </div>"""
+    return (f'<div class="menu" id="{menu_id}" data-kind="{kind}" role="menu" '
+            f'aria-label="{html.escape(heading)}" hidden>\n'
+            f'    <div class="group">{html.escape(heading)}</div>\n{rows}\n  </div>')
 
 
 def sidebar_html() -> str:
@@ -1527,6 +1733,7 @@ def sidebar_html() -> str:
       <span>Open documents</span><span class="count" id="docsCount"></span></header>
     <div class="tree" id="docsTree"></div>
   </section>
+  <div id="paneGrip" title="Drag to resize the panels"></div>
   <section class="pane files" id="paneFiles">
     <header data-pane="files"><span class="caret">&#9662;</span>
       <span>Computer</span>
@@ -1561,13 +1768,18 @@ def tabs_html(tabs: list[dict], active: int) -> str:
     )
 
 
-def toolbar_html(title: str, subtitle: str, can_go_back: bool, mode: str, style: str) -> str:
+def toolbar_html(title: str, subtitle: str, can_go_back: bool, mode: str, style: str,
+                 font: str = "system", csv_align: bool = False) -> str:
     back_disabled = "" if can_go_back else " disabled"
     fit_btn = ""
     if mode in ("image", "mermaid"):
         fit_btn = (
             f'<button class="tb" id="fitBtn" title="Fit to window (F)">{ICONS["fit"]}</button>'
         )
+    align_btn = (
+        f'<button class="tb" id="alignBtn" aria-pressed="{"true" if csv_align else "false"}" '
+        f'title="Align columns">{ICONS["align"]}</button>'
+    )
     dims = '<span id="dims" class="dims"></span>' if mode == "image" else ""
     label = html.escape(title)
     sub = f' <span style="color:var(--fg-faint)">{html.escape(subtitle)}</span>' if subtitle else ""
@@ -1583,11 +1795,19 @@ def toolbar_html(title: str, subtitle: str, can_go_back: bool, mode: str, style:
   <div id="zoomLabel">100%</div>
   <button class="tb" id="zoomIn" title="Zoom in (Ctrl++)">{ICONS["plus"]}</button>
   {fit_btn}
+  {align_btn}
   <div class="sep"></div>
   <div class="menu-wrap">
-    <button class="tb" id="styleBtn" title="Style (Ctrl+D cycles)"
+    <button class="tb" data-menu="fontMenu" id="fontBtn" title="Font"
+            aria-haspopup="menu" aria-expanded="false">{ICONS["font"]}</button>
+    {choice_menu_html("fontMenu", "font", "Font",
+                      [(f, FONT_LABELS[f]) for f in FONTS], font, keys=False)}
+  </div>
+  <div class="menu-wrap">
+    <button class="tb" data-menu="styleMenu" id="styleBtn" title="Style (Ctrl+D cycles)"
             aria-haspopup="menu" aria-expanded="false">{ICONS["style"]}</button>
-{style_menu_html(style)}
+    {choice_menu_html("styleMenu", "style", "Style",
+                      [(s, STYLE_LABELS[s]) for s in STYLES], style, swatches=True)}
   </div>
 </div>"""
 
@@ -1598,25 +1818,30 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
                with_mermaid: bool, vector: bool = False,
                view_box: tuple[float, float] | None = None,
                tabs: list[dict] | None = None, active_tab: int = 0,
-               sidebar: dict | None = None) -> str:
+               sidebar: dict | None = None, font: str = "system",
+               csv: bool = False, csv_align: bool = False) -> str:
     """Assemble a complete, self-contained HTML page for the webview."""
     if style not in STYLES:
         style = STYLES[0]
+    if font not in FONTS:
+        font = FONTS[0]
     tabs = tabs or []
     single = len(tabs) <= 1
     sidebar = sidebar or {}
     hidden = not sidebar.get("visible", True)
     width = int(sidebar.get("width") or 264)
+    docs_h = int(sidebar.get("docs_height") or 220)
     cfg = {
         "mode": mode, "zoom": zoom, "fit": fit, "scroll": scroll,
         "steps": list(ZOOM_STEPS), "vector": vector,
         "viewBox": list(view_box) if view_box else None,
-        "styles": list(STYLES),
+        "styles": list(STYLES), "fonts": list(FONTS),
+        "csv": csv, "csvAlign": csv_align,
         "tabCount": len(tabs), "activeTab": active_tab,
         "docsTree": sidebar.get("docs") or [],
         "filesTree": sidebar.get("files") or [],
         "panes": sidebar.get("panes") or {},
-        "sidebarWidth": width,
+        "sidebarWidth": width, "docsHeight": docs_h,
     }
     base_tag = f'<base href="{html.escape(base.as_uri() + "/", quote=True)}">' if base else ""
 
@@ -1634,7 +1859,7 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
         )
 
     return f"""<!doctype html>
-<html lang="en" data-style="{style}">
+<html lang="en" data-style="{style}" data-font="{font}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1645,9 +1870,9 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
 {pygments_css()}
 </style>
 </head>
-<body class="mode-{mode}{' single-tab' if single else ''}{' no-sidebar' if hidden else ''}"
-      style="--sidebar-w: {width}px">
-{toolbar_html(title, subtitle, can_go_back, mode, style)}
+<body class="mode-{mode}{' single-tab' if single else ''}{' no-sidebar' if hidden else ''}{' is-csv' if csv else ''}"
+      style="--sidebar-w: {width}px; --docs-h: {docs_h}px">
+{toolbar_html(title, subtitle, can_go_back, mode, style, font, csv_align)}
 {sidebar_html()}
 {tabs_html(tabs, active_tab)}
 <div id="scroller"><div id="content">{body}</div></div>
@@ -1674,7 +1899,91 @@ def classify(path: Path) -> str:
         return "svg"
     if ext in RASTER_EXTS:
         return "raster"
+    if ext in CSV_EXTS:
+        return "csv"
     return "text"
+
+
+# --------------------------------------------------------------------------- #
+# Delimited text: rainbow columns
+# --------------------------------------------------------------------------- #
+
+def sniff_delimiter(sample: str, ext: str) -> str:
+    """Best guess at the field separator."""
+    if ext in {".tsv", ".tab"}:
+        return "\t"
+    try:
+        import csv as csv_mod
+        return csv_mod.Sniffer().sniff(sample, delimiters=",;\t|").delimiter
+    except Exception:
+        # Sniffer gives up on short or irregular files; count candidates instead.
+        first = sample.splitlines()[0] if sample.splitlines() else ""
+        counts = {d: first.count(d) for d in (",", ";", "\t", "|")}
+        best = max(counts, key=counts.get)
+        return best if counts[best] else ","
+
+
+def parse_delimited(text: str, ext: str) -> tuple[list[list[str]], str, bool]:
+    """Rows, the delimiter used, and whether the file was truncated."""
+    import csv as csv_mod
+    import io
+
+    delimiter = sniff_delimiter(text[:8192], ext)
+    rows: list[list[str]] = []
+    truncated = False
+    try:
+        reader = csv_mod.reader(io.StringIO(text, newline=""), delimiter=delimiter)
+        for row in reader:
+            if len(rows) >= CSV_MAX_ROWS:
+                truncated = True
+                break
+            rows.append(row)
+    except (csv_mod.Error, ValueError):
+        # Malformed quoting: fall back to a plain split so something still shows.
+        rows = [line.split(delimiter) for line in text.splitlines()[:CSV_MAX_ROWS]]
+        truncated = len(text.splitlines()) > CSV_MAX_ROWS
+    return rows, delimiter, truncated
+
+
+def render_delimited(rows: list[list[str]], delimiter: str, *,
+                     aligned: bool, truncated: bool) -> str:
+    """Colour every column, optionally padding fields so columns line up.
+
+    Kept as monospaced text rather than a table: that keeps the file's own shape
+    visible, and makes alignment something the reader can turn on and off.
+    """
+    if not rows:
+        return '<div class="csv-info">Empty file.</div>'
+
+    columns = max(len(row) for row in rows)
+    widths = [0] * columns
+    if aligned:
+        for row in rows:
+            for index, field in enumerate(row):
+                widths[index] = max(widths[index], len(field))
+
+    shown = html.escape("\\t" if delimiter == "\t" else delimiter)
+    info = (f'<div class="csv-info">{len(rows):,} rows &times; {columns} columns'
+            f' &middot; delimiter <code>{shown}</code>'
+            f'{" &middot; aligned" if aligned else ""}</div>')
+
+    sep = f'<span class="csv-d">{html.escape(delimiter)}</span>'
+    lines = []
+    for number, row in enumerate(rows):
+        cells = []
+        for index, field in enumerate(row):
+            text = html.escape(field)
+            if aligned and index < columns - 1:
+                text += "&nbsp;" * (widths[index] - len(field))
+            cells.append(f'<span class="c{index % CSV_COLOURS}">{text}</span>')
+        klass = "csv-row csv-head" if number == 0 else "csv-row"
+        lines.append(f'<div class="{klass}">{sep.join(cells)}</div>')
+
+    note = ""
+    if truncated:
+        note = (f'<div class="csv-info csv-cut">Showing the first '
+                f'{CSV_MAX_ROWS:,} rows.</div>')
+    return f'{info}<pre class="csv">{"".join(lines)}</pre>{note}'
 
 
 def read_text(path: Path) -> str:
@@ -1965,7 +2274,7 @@ def invalidate_document(path: Path) -> None:
         _DOC_CACHE.pop(cached, None)
 
 
-def document_parts(path: Path) -> dict:
+def document_parts(path: Path, *, csv_align: bool = False) -> dict:
     """Parse a document into the pieces build_page needs, with caching."""
     if not path.is_absolute():
         # file:// URLs for the base tag and for <img src> need a full path.
@@ -1974,18 +2283,19 @@ def document_parts(path: Path) -> dict:
         mtime = path.stat().st_mtime
     except OSError:
         mtime = None
-    key = (str(path), mtime)
+    # csv_align changes the body, so it belongs in the key.
+    key = (str(path), mtime, csv_align)
     cached = _DOC_CACHE.get(key)
     if cached is not None:
         return cached
-    parts = _parse_document(path)
+    parts = _parse_document(path, csv_align=csv_align)
     if len(_DOC_CACHE) >= _DOC_CACHE_LIMIT:
         _DOC_CACHE.clear()
     _DOC_CACHE[key] = parts
     return parts
 
 
-def _parse_document(path: Path) -> dict:
+def _parse_document(path: Path, *, csv_align: bool = False) -> dict:
     """The expensive half of rendering: read the file and produce a body."""
     kind = classify(path)
 
@@ -2014,6 +2324,14 @@ def _parse_document(path: Path) -> dict:
                 "with_mermaid": False, "vector": vector,
                 "view_box": svg_dimensions(path) if vector else None}
 
+    if kind == "csv":
+        rows, delimiter, truncated = parse_delimited(read_text(path), path.suffix.lower())
+        body = render_delimited(rows, delimiter, aligned=csv_align, truncated=truncated)
+        columns = max((len(r) for r in rows), default=0)
+        return {"body": body, "mode": "doc", "base": path.parent,
+                "subtitle": f"{len(rows):,} × {columns}",
+                "with_mermaid": False, "vector": False, "view_box": None, "csv": True}
+
     # plain text / unknown: show it verbatim rather than guessing
     return {"body": f"<pre><code>{html.escape(read_text(path))}</code></pre>",
             "mode": "doc", "subtitle": "", "base": path.parent,
@@ -2023,8 +2341,9 @@ def _parse_document(path: Path) -> dict:
 def render_document(path: Path, *, style: str, zoom: float, fit: bool,
                     scroll: float, can_go_back: bool,
                     tabs: list[dict] | None = None, active_tab: int = 0,
-                    sidebar: dict | None = None) -> str:
-    parts = document_parts(path)
+                    sidebar: dict | None = None, font: str = "system",
+                    csv_align: bool = False) -> str:
+    parts = document_parts(path, csv_align=csv_align)
     return build_page(
         body=parts["body"], title=path.name, subtitle=parts["subtitle"],
         mode=parts["mode"], style=style, zoom=zoom,
@@ -2033,12 +2352,14 @@ def render_document(path: Path, *, style: str, zoom: float, fit: bool,
         base=parts["base"], can_go_back=can_go_back,
         with_mermaid=parts["with_mermaid"], vector=parts["vector"],
         view_box=parts["view_box"], tabs=tabs, active_tab=active_tab,
-        sidebar=sidebar,
+        sidebar=sidebar, font=font,
+        csv=bool(parts.get("csv")), csv_align=csv_align,
     )
 
 
 def render_welcome(style: str, tabs: list[dict] | None = None,
-                   active_tab: int = 0, sidebar: dict | None = None) -> str:
+                   active_tab: int = 0, sidebar: dict | None = None,
+                   font: str = "system") -> str:
     body = """
 <div class="mdv-center"><div class="inner">
   <div class="glyph">&#128196;</div>
@@ -2059,13 +2380,14 @@ def render_welcome(style: str, tabs: list[dict] | None = None,
     return build_page(
         body=body, title="md-view", mode="blank", style=style, zoom=1.0,
         fit=False, scroll=0.0, base=None, can_go_back=False, with_mermaid=False,
-        tabs=tabs, active_tab=active_tab, sidebar=sidebar,
+        tabs=tabs, active_tab=active_tab, sidebar=sidebar, font=font,
     )
 
 
 def render_error(title: str, message: str, style: str,
                  tabs: list[dict] | None = None, active_tab: int = 0,
-                 can_go_back: bool = True, sidebar: dict | None = None) -> str:
+                 can_go_back: bool = True, sidebar: dict | None = None,
+                 font: str = "system") -> str:
     body = (
         f'<div class="mdv-center"><div class="inner"><div class="glyph">&#9888;</div>'
         f"<h1>{html.escape(title)}</h1><p>{html.escape(message)}</p>"
@@ -2075,7 +2397,7 @@ def render_error(title: str, message: str, style: str,
     return build_page(
         body=body, title=title, mode="blank", style=style, zoom=1.0, fit=False,
         scroll=0.0, base=None, can_go_back=can_go_back, with_mermaid=False,
-        tabs=tabs, active_tab=active_tab, sidebar=sidebar,
+        tabs=tabs, active_tab=active_tab, sidebar=sidebar, font=font,
     )
 
 
@@ -2123,12 +2445,15 @@ class Viewer:
     """
 
     def __init__(self, paths: list[Path] | Path | None = None, *, style: str, zoom: float,
-                 watch: bool = True, mermaid: bool = True, debug: bool = False):
+                 watch: bool = True, mermaid: bool = True, debug: bool = False,
+                 font: str = "system"):
         import webview  # imported here so --register works without a GUI stack
 
         self.webview = webview
         self.prefs = load_prefs()
         self.style = style
+        self.font = font if font in FONTS else "system"
+        self.csv_align = bool(self.prefs.get("csv_align", False))
         self.zoom = zoom
         self.fit = bool(self.prefs.get("fit", True))
         self.watch_enabled = watch
@@ -2153,6 +2478,7 @@ class Viewer:
         # the document, and expanded folders must survive that.
         self.sidebar_visible = bool(self.prefs.get("sidebar", True))
         self.sidebar_width = int(self.prefs.get("sidebar_width") or 264)
+        self.docs_height = int(self.prefs.get("docs_height") or 220)
         self.panes = dict(self.prefs.get("panes") or {})
         self.expanded: set[Path] = set()
         for item in self.prefs.get("expanded") or []:
@@ -2237,6 +2563,7 @@ class Viewer:
         return {
             "visible": self.sidebar_visible,
             "width": self.sidebar_width,
+            "docs_height": self.docs_height,
             "panes": self.panes,
             "docs": build_doc_tree(self.tabs, self.active, self._stale),
             "files": files,
@@ -2247,31 +2574,34 @@ class Viewer:
         side = self._sidebar()
         path = tab.path
         if path is None:
-            return render_welcome(self.style, tabs, active, side)
+            return render_welcome(self.style, tabs, active, side, self.font)
         try:
             if not path.exists():
                 return render_error("File not found", str(path), self.style, tabs, active,
-                                    can_go_back=bool(tab.history), sidebar=side)
+                                    can_go_back=bool(tab.history), sidebar=side,
+                                    font=self.font)
             if path.is_dir():
                 return render_error("That is a folder", str(path), self.style, tabs, active,
-                                    can_go_back=bool(tab.history), sidebar=side)
+                                    can_go_back=bool(tab.history), sidebar=side,
+                                    font=self.font)
             html_text = render_document(
                 path, style=self.style, zoom=self.zoom, fit=self.fit,
                 scroll=scroll, can_go_back=bool(tab.history),
-                tabs=tabs, active_tab=active, sidebar=side,
+                tabs=tabs, active_tab=active, sidebar=side, font=self.font,
+                csv_align=self.csv_align,
             )
             if not self.mermaid_enabled:
                 html_text = html_text.replace("__mdv_mermaidReady()", "void 0")
             return html_text
         except OSError as exc:
             return render_error("Cannot read this file", str(exc), self.style, tabs, active,
-                                sidebar=side)
+                                sidebar=side, font=self.font)
         except Exception as exc:  # a bad document must not take the viewer down
             if self.debug:
                 import traceback
                 traceback.print_exc()
             return render_error("Failed to render", f"{type(exc).__name__}: {exc}",
-                                self.style, tabs, active, sidebar=side)
+                                self.style, tabs, active, sidebar=side, font=self.font)
 
     def _paint(self, *, scroll: float | None = None) -> str:
         """Render the active tab into the window. Caller must hold _nav."""
@@ -2338,7 +2668,6 @@ class Viewer:
                 if tab.path == path and path is not None:
                     self.active = index
                     self._paint()
-                    self._raise()
                     return index
             # An untouched Start tab is a placeholder: reuse it.
             if len(self.tabs) == 1 and self.tabs[0].path is None:
@@ -2349,7 +2678,6 @@ class Viewer:
                 if focus:
                     self.active += 1
             self._paint()
-            self._raise()
             return self.active
 
     def select_tab(self, index: int) -> None:
@@ -2454,11 +2782,19 @@ class Viewer:
         return False
 
     def _raise(self) -> None:
-        """Bring the window forward when work arrives from another process."""
+        """Bring the window forward without touching its geometry.
+
+        Only for files arriving from *another process*; opening a tab from
+        inside the window must never disturb it.
+
+        Deliberately not window.restore(): that sets WindowState to Normal,
+        which un-maximises. show() is Show() + Activate(), which leaves the
+        window state, size and position exactly as the user left them.
+        """
         if self._window is None:
             return
         try:
-            self._window.restore()
+            self._window.show()
         except Exception:
             pass
 
@@ -2541,8 +2877,9 @@ class Viewer:
     def _persist(self) -> None:
         self.prefs.update({
             "style": self.style, "zoom": round(self.zoom, 4), "fit": self.fit,
+            "font": self.font, "csv_align": self.csv_align,
             "sidebar": self.sidebar_visible, "sidebar_width": self.sidebar_width,
-            "panes": self.panes,
+            "docs_height": self.docs_height, "panes": self.panes,
             # Keep the list bounded: an unbounded set would grow forever.
             "expanded": sorted(str(p) for p in list(self.expanded)[:400]),
         })
@@ -2578,6 +2915,15 @@ class Viewer:
             return True
         _os_open(path)
         return False
+
+    def toggle_csv_align(self) -> bool:
+        """Alignment changes the rendered text, so the tab is rebuilt."""
+        self.csv_align = not self.csv_align
+        self._persist()
+        self._capture_scroll()
+        with self._nav:
+            self._paint()
+        return self.csv_align
 
     def reveal_current(self) -> bool:
         """Expand every ancestor of the active document, then repaint."""
@@ -2692,12 +3038,18 @@ class Api:
     def open_from_tree(self, path: str):
         return self._viewer.open_from_tree(path)
 
-    def set_sidebar(self, visible: bool = True, width: int = 0, panes: dict | None = None):
+    def set_sidebar(self, visible: bool = True, width: int = 0, panes: dict | None = None,
+                    docs_height: int = 0):
         viewer = self._viewer
         viewer.sidebar_visible = bool(visible)
         try:
             if width:
                 viewer.sidebar_width = max(160, min(640, int(width)))
+        except (TypeError, ValueError):
+            pass
+        try:
+            if docs_height:
+                viewer.docs_height = max(60, min(1200, int(docs_height)))
         except (TypeError, ValueError):
             pass
         if isinstance(panes, dict):
@@ -2720,6 +3072,18 @@ class Api:
 
     def escape(self):
         return None
+
+    def set_font(self, name: str):
+        """Change the body typeface. CSS-only, so no repaint is needed."""
+        if name not in FONTS:
+            return False
+        self._viewer.font = name
+        self._viewer._persist()
+        return True
+
+    def toggle_csv_align(self):
+        """Flip column alignment and rebuild the view."""
+        return self._viewer.toggle_csv_align()
 
     # preferences
     def save_view_prefs(self, state: dict):
@@ -2783,6 +3147,10 @@ class InstanceServer:
                         if path.exists():
                             self.viewer.open_tab(path)
                             opened += 1
+                    if opened:
+                        # Only a hand-off from another process brings the
+                        # window forward; in-app opens leave it alone.
+                        self.viewer._raise()
                     conn.sendall(b"ok" if opened else b"empty")
                 except (OSError, ValueError, TypeError):
                     continue
@@ -3013,7 +3381,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Lightweight native viewer for Markdown, Mermaid, SVG and images.",
         epilog=(
             "Shortcuts: Ctrl++/Ctrl+- zoom, Ctrl+0 reset, F fit, W wide, "
-            "F5 reload, Ctrl+O open, Ctrl+D cycles style (or 1/2/3), [ back, F11 fullscreen."
+            "F5 reload, Ctrl+O open, Ctrl+B sidebar, Ctrl+D cycles style (or 1/2/3), "
+            "[ back, F11 fullscreen."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -3028,6 +3397,8 @@ def build_parser() -> argparse.ArgumentParser:
                       help="shorthand for --style light")
     look.add_argument("--github", action="store_const", const="github", dest="style",
                       help="shorthand for --style github")
+    p.add_argument("--font", choices=FONTS, dest="font",
+                   help="body typeface (default: remembered, else the style's own)")
     p.add_argument("--no-watch", action="store_true",
                    help="do not reload when the file changes on disk")
     p.add_argument("--no-mermaid", action="store_true", help="skip mermaid rendering")
@@ -3057,6 +3428,9 @@ def main(argv: list[str] | None = None) -> int:
 
     prefs = load_prefs()
     style = resolve_style(args.style, prefs)
+    font = args.font or prefs.get("font") or "system"
+    if font not in FONTS:
+        font = "system"
     zoom = args.zoom or float(prefs.get("zoom") or 1.0)
     zoom = min(ZOOM_STEPS[-1], max(ZOOM_STEPS[0], zoom))
 
@@ -3102,7 +3476,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     viewer = Viewer(
-        paths, style=style, zoom=zoom,
+        paths, style=style, zoom=zoom, font=font,
         watch=not args.no_watch, mermaid=not args.no_mermaid, debug=args.debug,
     )
     if not args.new_window:
