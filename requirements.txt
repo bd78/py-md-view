@@ -1,0 +1,10 @@
+# md-view runtime dependencies
+pywebview>=5.0
+markdown>=3.5
+pygments>=2.17
+
+# Windows: pywebview reaches the WebView2 runtime through .NET
+pythonnet>=3.0; sys_platform == "win32"
+
+# Linux: GTK bindings for WebKitGTK
+pywebview[gtk]>=5.0; sys_platform == "linux"
