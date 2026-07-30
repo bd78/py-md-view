@@ -104,6 +104,10 @@ Both trees keep whatever you expanded or collapsed. Opening a file rebuilds the
 page, so that state is held on the Python side and reapplied — clicking a
 document never re-opens folders you had closed.
 
+Expansion is tracked per **root and path**, not by path alone. A folder you can
+reach from two roots — a project under both Home and `C:\`, say — is two rows
+with independent state, so expanding it in one place leaves the other as it was.
+
 ### Refresh
 
 <kbd>F5</kbd> (or the toolbar's reload button) **rebuilds the active tab from
