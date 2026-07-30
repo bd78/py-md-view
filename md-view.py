@@ -1113,11 +1113,12 @@ VIEWER_JS = r"""
     catch (err) { return Promise.reject(err); }
   }
 
-  /* Every expanded folder, so Python can restore the tree after a repaint. */
-  function expandedPaths() {
+  /* Every expanded folder, so Python can restore the tree after a repaint.
+     Keys rather than paths, so two roots showing one folder stay independent. */
+  function expandedKeys() {
     return Array.prototype.map.call(
       filesTree ? filesTree.querySelectorAll(".node.open[data-dir='1']") : [],
-      function (n) { return n.dataset.path; }
+      function (n) { return n.dataset.key; }
     );
   }
 
@@ -1132,15 +1133,21 @@ VIEWER_JS = r"""
   /* Sent straight away rather than debounced: clicking a file replaces the
      whole page, and a pending timer would die with it, losing the toggle. */
   function persistTree(kind) {
-    if (kind === "files") call("set_expanded", expandedPaths());
+    if (kind === "files") call("set_expanded", expandedKeys());
     else call("set_doc_collapsed", collapsedDocPaths());
   }
 
-  function makeNode(item, depth, kind) {
+  var KEY_SEP = "";
+
+  function makeNode(item, depth, kind, rootId) {
     var node = document.createElement("div");
     node.className = "node";
     node.dataset.path = item.path || "";
     node.dataset.dir = item.dir ? "1" : "0";
+    // Scoped by root: the same folder reached from two roots is two rows,
+    // each with its own open/closed state.
+    node.dataset.root = item.root || rootId || "";
+    node.dataset.key = item.key || (node.dataset.root + KEY_SEP + node.dataset.path);
 
     var row = document.createElement("div");
     row.className = "row" + (item.dir ? " dir" : " file")
@@ -1186,7 +1193,7 @@ VIEWER_JS = r"""
       kids.className = "kids";
       node.appendChild(kids);
       if (item.children) {
-        fillKids(kids, item.children, depth + 1, kind, item.more);
+        fillKids(kids, item.children, depth + 1, kind, item.more, node.dataset.root);
         node.dataset.loaded = "1";
         // Children are rendered even for a collapsed folder, so honour the flag.
         if (item.open !== false) node.classList.add("open");
@@ -1206,10 +1213,10 @@ VIEWER_JS = r"""
     return "▬";
   }
 
-  function fillKids(container, children, depth, kind, more) {
+  function fillKids(container, children, depth, kind, more, rootId) {
     container.textContent = "";
     children.forEach(function (child) {
-      container.appendChild(makeNode(child, depth, kind));
+      container.appendChild(makeNode(child, depth, kind, rootId));
     });
     if (more) {
       var row = document.createElement("div");
@@ -1230,7 +1237,7 @@ VIEWER_JS = r"""
       container.appendChild(msg);
       return;
     }
-    nodes.forEach(function (n) { container.appendChild(makeNode(n, 0, kind)); });
+    nodes.forEach(function (n) { container.appendChild(makeNode(n, 0, kind, n.root)); });
   }
 
   function depthOf(node) {
@@ -1269,7 +1276,8 @@ VIEWER_JS = r"""
         row.textContent = result && result.denied ? "not readable" : "empty";
         kids.appendChild(row);
       } else {
-        fillKids(kids, entries, depthOf(node) + 1, kind, result.more);
+        fillKids(kids, entries, depthOf(node) + 1, kind, result.more,
+                 node.dataset.root);
       }
       node.classList.add("open");
       persistTree(kind);
@@ -2141,7 +2149,7 @@ def filesystem_roots(anchor: Path | None = None) -> list[dict]:
     roots: list[dict] = []
     seen: set[str] = set()
 
-    def add(label: str, path: Path | None) -> None:
+    def add(root_id: str, label: str, path: Path | None) -> None:
         if path is None:
             return
         try:
@@ -2153,21 +2161,50 @@ def filesystem_roots(anchor: Path | None = None) -> list[dict]:
         if key in seen:
             return
         seen.add(key)
-        roots.append({"name": label, "path": str(path), "dir": True})
+        roots.append({"name": label, "path": str(path), "dir": True,
+                      "root": root_id, "key": node_key(root_id, path)})
 
     if anchor is not None:
-        add(f"{anchor.name or anchor} (documents)", anchor)
+        add("anchor", f"{anchor.name or anchor} (documents)", anchor)
     home = Path.home()
-    add("Home", home)
+    add("home", "Home", home)
     for folder in ("Desktop", "Documents", "Downloads"):
-        add(folder, home / folder)
+        add(folder.lower(), folder, home / folder)
 
     if sys.platform == "win32":
         for letter in _windows_drives():
-            add(f"{letter}:\\", Path(f"{letter}:\\"))
+            add(f"drive-{letter.lower()}", f"{letter}:\\", Path(f"{letter}:\\"))
     else:
-        add("/", Path("/"))
+        add("root", "/", Path("/"))
     return roots
+
+
+def node_key(root_id: str, path: Path | str) -> str:
+    """Identity of a row: which root it hangs from, plus its path.
+
+    Scoping by root matters because one folder can be reachable from several
+    roots -- a project under both Home and C:\\, say. Keying on the path alone
+    made those occurrences share one open/closed state, so expanding a folder in
+    one place silently expanded it in the other.
+    """
+    return f"{root_id}\x1f{path}"
+
+
+def _same_path(a: Path, b: Path) -> bool:
+    """Windows paths compare case-insensitively; POSIX ones do not."""
+    if sys.platform == "win32":
+        return str(a).rstrip("\\/").lower() == str(b).rstrip("\\/").lower()
+    return str(a).rstrip("/") == str(b).rstrip("/")
+
+
+def _is_under(child: Path, parent: Path) -> bool:
+    """True when `child` sits inside `parent` (or is `parent`)."""
+    if _same_path(child, parent):
+        return True
+    try:
+        return any(_same_path(p, parent) for p in child.parents)
+    except (OSError, ValueError):
+        return False
 
 
 def _windows_drives() -> list[str]:
@@ -2179,29 +2216,29 @@ def _windows_drives() -> list[str]:
         return [c for c in "CDEFGHIJKLMNOPQRSTUVWXYZ" if Path(f"{c}:\\").is_dir()]
 
 
-def build_fs_tree(anchor: Path | None, expanded: set[Path]) -> list[dict]:
+def build_fs_tree(anchor: Path | None, expanded: set[str]) -> list[dict]:
     """Roots plus the children of every expanded directory, rendered eagerly.
 
     Server-rendering the open branches means the tree is complete the moment
     the page appears; everything deeper is fetched on demand from the bridge.
+    `expanded` holds node keys (see node_key), not bare paths.
     """
-    def node_for(entry: dict, depth: int) -> dict:
+    def node_for(entry: dict, root_id: str, depth: int) -> dict:
         node = dict(entry)
+        node["root"] = root_id
+        node["key"] = node.get("key") or node_key(root_id, node["path"])
         if not node.get("dir"):
             return node
-        try:
-            is_open = Path(node["path"]) in expanded
-        except (OSError, ValueError):
-            is_open = False
+        is_open = node["key"] in expanded
         node["open"] = is_open
         if is_open and depth < TREE_MAX_DEPTH:
             children, more = dir_entries(Path(node["path"]))
-            node["children"] = [node_for(child, depth + 1) for child in children]
+            node["children"] = [node_for(child, root_id, depth + 1) for child in children]
             if more:
                 node["more"] = more
         return node
 
-    return [node_for(root, 0) for root in filesystem_roots(anchor)]
+    return [node_for(root, root["root"], 0) for root in filesystem_roots(anchor)]
 
 
 def build_doc_tree(tabs: list, active: int, stale: set[Path],
@@ -2230,7 +2267,7 @@ def build_doc_tree(tabs: list, active: int, stale: set[Path],
         except ValueError:
             base = Path(anchor)
         root = {"name": str(base), "path": str(base), "dir": True, "open": True,
-                "root": True, "children": []}
+                "is_root": True, "children": []}
         for index, path in items:
             try:
                 parts = path.relative_to(base).parts
@@ -2284,7 +2321,7 @@ def _compact_tree(node: dict) -> None:
     for child in children:
         _compact_tree(child)
     while (len(children) == 1 and children[0].get("dir")
-           and not node.get("root") and children[0].get("children")):
+           and not node.get("is_root") and children[0].get("children")):
         only = children[0]
         node["name"] = f"{node['name']}{os.sep}{only['name']}"
         node["path"] = only["path"]
@@ -2511,13 +2548,16 @@ class Viewer:
         self.docs_height = int(self.prefs.get("docs_height") or 220)
         self.panes = dict(self.prefs.get("panes") or {})
         self.doc_collapsed = self._canon_set(self.prefs.get("doc_collapsed"))
-        self.expanded = {p for p in self._canon_set(self.prefs.get("expanded"))
-                         if p.is_dir()}
+        # Node keys, not paths: entries saved by an older version carry no
+        # root and are dropped rather than guessed at.
+        self.expanded = {k for k in (self.prefs.get("expanded") or [])
+                         if isinstance(k, str) and "" in k}
         # Pinned for the session: see filesystem_roots. Opening a file must not
         # move the tree out from under the reader.
         self.fs_anchor = documents_anchor([t.path for t in self.tabs if t.path])
         if self.fs_anchor is not None:
-            self.expanded.add(self.fs_anchor)   # start where the documents live
+            # start where the documents live
+            self.expanded.add(node_key("anchor", self.fs_anchor))
         self._stop = threading.Event()
         self._window = None
         self._server = None
@@ -2909,16 +2949,20 @@ class Viewer:
             "sidebar": self.sidebar_visible, "sidebar_width": self.sidebar_width,
             "docs_height": self.docs_height, "panes": self.panes,
             # Keep the list bounded: an unbounded set would grow forever.
-            "expanded": sorted(str(p) for p in list(self.expanded)[:400]),
+            "expanded": sorted(list(self.expanded)[:400]),
             "doc_collapsed": sorted(str(p) for p in list(self.doc_collapsed)[:200]),
         })
         save_prefs(self.prefs)
 
     # -- sidebar ----------------------------------------------------------- #
 
-    def set_expanded(self, paths: list[str]) -> None:
-        """Replace the expanded-folder set from the page."""
-        self.expanded = self._canon_set(paths)
+    def set_expanded(self, keys: list[str]) -> None:
+        """Replace the expanded set from the page.
+
+        These are node keys the page got from us, so they round-trip exactly;
+        no normalising is needed or wanted.
+        """
+        self.expanded = {k for k in (keys or []) if isinstance(k, str) and "" in k}
         self._persist()
 
     @classmethod
@@ -2948,9 +2992,7 @@ class Viewer:
         except (TypeError, ValueError):
             return False
         if path.is_dir():
-            self.expanded.add(self._canon(path))
-            self._persist()
-            return False
+            return False        # folders are expanded by the tree, not opened
         if not path.exists():
             return False
         if path.suffix.lower() in VIEWABLE_EXTS:
@@ -2969,12 +3011,20 @@ class Viewer:
         return self.csv_align
 
     def reveal_current(self) -> bool:
-        """Expand every ancestor of the active document, then repaint."""
+        """Expand down to the active document under every root holding it."""
         path = self.current
         if path is None:
             return False
-        for parent in path.parents:
-            self.expanded.add(parent)
+        for root in filesystem_roots(self.fs_anchor):
+            root_path = Path(root["path"])
+            if not _is_under(path, root_path):
+                continue
+            cursor = path.parent
+            while True:
+                self.expanded.add(node_key(root["root"], cursor))
+                if _same_path(cursor, root_path) or cursor == cursor.parent:
+                    break
+                cursor = cursor.parent
         self._persist()
         with self._nav:
             self._paint()
