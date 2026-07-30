@@ -98,6 +98,10 @@ hidden/system entries are skipped, and a very long directory is capped with a
 Folders load lazily over the bridge and expand **without reloading the page**,
 so opening a branch never re-renders your document or re-runs its diagrams.
 
+Both trees keep whatever you expanded or collapsed. Opening a file rebuilds the
+page, so that state is held on the Python side and reapplied — clicking a
+document never re-opens folders you had closed.
+
 ### Refresh
 
 <kbd>F5</kbd> (or the toolbar's reload button) **rebuilds the active tab from
