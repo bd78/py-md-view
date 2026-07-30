@@ -1121,10 +1121,19 @@ VIEWER_JS = r"""
     );
   }
 
-  var saveTimer = null;
-  function saveExpanded() {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(function () { call("set_expanded", expandedPaths()); }, 250);
+  /* Folders collapsed in the open-documents tree. */
+  function collapsedDocPaths() {
+    return Array.prototype.map.call(
+      docsTree ? docsTree.querySelectorAll(".node[data-dir='1']:not(.open)") : [],
+      function (n) { return n.dataset.path; }
+    );
+  }
+
+  /* Sent straight away rather than debounced: clicking a file replaces the
+     whole page, and a pending timer would die with it, losing the toggle. */
+  function persistTree(kind) {
+    if (kind === "files") call("set_expanded", expandedPaths());
+    else call("set_doc_collapsed", collapsedDocPaths());
   }
 
   function makeNode(item, depth, kind) {
@@ -1178,8 +1187,9 @@ VIEWER_JS = r"""
       node.appendChild(kids);
       if (item.children) {
         fillKids(kids, item.children, depth + 1, kind, item.more);
-        node.classList.add("open");
         node.dataset.loaded = "1";
+        // Children are rendered even for a collapsed folder, so honour the flag.
+        if (item.open !== false) node.classList.add("open");
       }
       if (item.open && !item.children) node.dataset.loaded = "";
     }
@@ -1235,12 +1245,12 @@ VIEWER_JS = r"""
   function toggleDir(node, kind) {
     if (node.classList.contains("open")) {
       node.classList.remove("open");
-      if (kind === "files") saveExpanded();
+      persistTree(kind);
       return;
     }
     if (node.dataset.loaded === "1") {
       node.classList.add("open");
-      if (kind === "files") saveExpanded();
+      persistTree(kind);
       return;
     }
     var chev = node.querySelector(":scope > .row > .chev");
@@ -1262,7 +1272,7 @@ VIEWER_JS = r"""
         fillKids(kids, entries, depthOf(node) + 1, kind, result.more);
       }
       node.classList.add("open");
-      if (kind === "files") saveExpanded();
+      persistTree(kind);
     }, function () {
       if (chev) chev.classList.remove("spin");
     });
@@ -2189,11 +2199,14 @@ def build_fs_tree(doc_paths: list[Path] | None, expanded: set[Path]) -> list[dic
     return [node_for(root, 0) for root in filesystem_roots(doc_paths)]
 
 
-def build_doc_tree(tabs: list, active: int, stale: set[Path]) -> list[dict]:
+def build_doc_tree(tabs: list, active: int, stale: set[Path],
+                   collapsed: set[Path] | None = None) -> list[dict]:
     """The open documents, arranged by their own directory structure.
 
     Only directories that actually contain an open document appear, and chains
     of single sub-directories are folded into one row so the tree stays short.
+    Folders the reader collapsed stay collapsed: the page is rebuilt on every
+    navigation, so that state has to be applied here rather than left to the DOM.
     """
     entries = [(i, tab.path) for i, tab in enumerate(tabs) if tab.path is not None]
     if not entries:
@@ -2233,8 +2246,20 @@ def build_doc_tree(tabs: list, active: int, stale: set[Path]) -> list[dict]:
             })
         _sort_tree(root)
         _compact_tree(root)
+        # After compaction, so the flag keys on the row's final path.
+        _apply_collapsed(root, collapsed or set())
         roots.append(root)
     return roots
+
+
+def _apply_collapsed(node: dict, collapsed: set[Path]) -> None:
+    if node.get("dir"):
+        try:
+            node["open"] = Path(node["path"]) not in collapsed
+        except (OSError, ValueError):
+            node["open"] = True
+    for child in node.get("children") or []:
+        _apply_collapsed(child, collapsed)
 
 
 def _sort_tree(node: dict) -> None:
@@ -2480,14 +2505,9 @@ class Viewer:
         self.sidebar_width = int(self.prefs.get("sidebar_width") or 264)
         self.docs_height = int(self.prefs.get("docs_height") or 220)
         self.panes = dict(self.prefs.get("panes") or {})
-        self.expanded: set[Path] = set()
-        for item in self.prefs.get("expanded") or []:
-            try:
-                candidate = Path(item)
-                if candidate.is_dir():
-                    self.expanded.add(candidate)
-            except (OSError, ValueError):
-                continue
+        self.doc_collapsed = self._canon_set(self.prefs.get("doc_collapsed"))
+        self.expanded = {p for p in self._canon_set(self.prefs.get("expanded"))
+                         if p.is_dir()}
         anchor = documents_anchor([t.path for t in self.tabs if t.path])
         if anchor is not None:
             self.expanded.add(anchor)         # start where the documents live
@@ -2565,7 +2585,8 @@ class Viewer:
             "width": self.sidebar_width,
             "docs_height": self.docs_height,
             "panes": self.panes,
-            "docs": build_doc_tree(self.tabs, self.active, self._stale),
+            "docs": build_doc_tree(self.tabs, self.active, self._stale,
+                                   self.doc_collapsed),
             "files": files,
         }
 
@@ -2882,6 +2903,7 @@ class Viewer:
             "docs_height": self.docs_height, "panes": self.panes,
             # Keep the list bounded: an unbounded set would grow forever.
             "expanded": sorted(str(p) for p in list(self.expanded)[:400]),
+            "doc_collapsed": sorted(str(p) for p in list(self.doc_collapsed)[:200]),
         })
         save_prefs(self.prefs)
 
@@ -2889,13 +2911,27 @@ class Viewer:
 
     def set_expanded(self, paths: list[str]) -> None:
         """Replace the expanded-folder set from the page."""
+        self.expanded = self._canon_set(paths)
+        self._persist()
+
+    @classmethod
+    def _canon_set(cls, paths) -> set[Path]:
+        """Canonical paths, so a folder compares equal however it was spelled."""
         fresh: set[Path] = set()
         for item in paths or []:
-            try:
-                fresh.add(Path(item))
-            except (TypeError, ValueError):
+            if not item:
                 continue
-        self.expanded = fresh
+            try:
+                canon = cls._canon(Path(item))
+            except (TypeError, ValueError, OSError):
+                continue
+            if canon is not None:
+                fresh.add(canon)
+        return fresh
+
+    def set_doc_collapsed(self, paths: list[str]) -> None:
+        """Replace the set of folders collapsed in the open-documents tree."""
+        self.doc_collapsed = self._canon_set(paths)
         self._persist()
 
     def open_from_tree(self, raw: str) -> bool:
@@ -2905,7 +2941,7 @@ class Viewer:
         except (TypeError, ValueError):
             return False
         if path.is_dir():
-            self.expanded.add(path)
+            self.expanded.add(self._canon(path))
             self._persist()
             return False
         if not path.exists():
@@ -3033,6 +3069,10 @@ class Api:
 
     def set_expanded(self, paths: list):
         self._viewer.set_expanded(list(paths or []))
+        return True
+
+    def set_doc_collapsed(self, paths: list):
+        self._viewer.set_doc_collapsed(list(paths or []))
         return True
 
     def open_from_tree(self, path: str):
