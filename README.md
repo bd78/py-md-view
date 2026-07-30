@@ -82,13 +82,15 @@ a × on its right to close it, mirroring the tab strip.
 
 **Computer** — browse for something to open. Clicking a file opens it in a new
 tab; anything md-view cannot display is handed to the OS. The roots are the
-folder containing your open documents, then Home, Desktop, Documents, Downloads
+folder your documents were opened from, then Home, Desktop, Documents, Downloads
 and the drives.
 
-That first root is derived from *all* open documents rather than the active one,
-on purpose: a root that changed identity every time you switched tabs would move
-out from under whatever you had just expanded. The ◉ button in the pane header
-expands the tree down to the document currently on screen.
+That first root is **fixed when the window opens** and never moves afterwards.
+Deriving it from the documents you happen to have open would reshape the tree
+every time you opened a file — discarding whatever you had expanded, and, if the
+new root were a folder you had already expanded, dumping all of its children on
+screen. The ◉ button in the pane header expands the tree down to the document
+currently on screen.
 
 Only directories and viewable files are listed — this tree exists to find
 something to open, and hiding the rest keeps it readable. Dot-files and Windows

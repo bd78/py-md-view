@@ -2130,8 +2130,14 @@ def documents_anchor(doc_paths: list[Path]) -> Path | None:
         return Path(parents[0])       # spread across drives; anchor on the first
 
 
-def filesystem_roots(doc_paths: list[Path] | None = None) -> list[dict]:
-    """Starting points for the computer tree."""
+def filesystem_roots(anchor: Path | None = None) -> list[dict]:
+    """Starting points for the computer tree.
+
+    `anchor` is fixed for the session by the caller. It must not follow the
+    documents around: recomputing it would reshape the tree whenever a file was
+    opened, discarding whatever the reader had expanded and, if the new anchor
+    happened to be an already-expanded folder, dumping all of its children.
+    """
     roots: list[dict] = []
     seen: set[str] = set()
 
@@ -2149,9 +2155,8 @@ def filesystem_roots(doc_paths: list[Path] | None = None) -> list[dict]:
         seen.add(key)
         roots.append({"name": label, "path": str(path), "dir": True})
 
-    anchor = documents_anchor(doc_paths or [])
     if anchor is not None:
-        add(f"{anchor.name or anchor} (open documents)", anchor)
+        add(f"{anchor.name or anchor} (documents)", anchor)
     home = Path.home()
     add("Home", home)
     for folder in ("Desktop", "Documents", "Downloads"):
@@ -2174,7 +2179,7 @@ def _windows_drives() -> list[str]:
         return [c for c in "CDEFGHIJKLMNOPQRSTUVWXYZ" if Path(f"{c}:\\").is_dir()]
 
 
-def build_fs_tree(doc_paths: list[Path] | None, expanded: set[Path]) -> list[dict]:
+def build_fs_tree(anchor: Path | None, expanded: set[Path]) -> list[dict]:
     """Roots plus the children of every expanded directory, rendered eagerly.
 
     Server-rendering the open branches means the tree is complete the moment
@@ -2196,7 +2201,7 @@ def build_fs_tree(doc_paths: list[Path] | None, expanded: set[Path]) -> list[dic
                 node["more"] = more
         return node
 
-    return [node_for(root, 0) for root in filesystem_roots(doc_paths)]
+    return [node_for(root, 0) for root in filesystem_roots(anchor)]
 
 
 def build_doc_tree(tabs: list, active: int, stale: set[Path],
@@ -2508,9 +2513,11 @@ class Viewer:
         self.doc_collapsed = self._canon_set(self.prefs.get("doc_collapsed"))
         self.expanded = {p for p in self._canon_set(self.prefs.get("expanded"))
                          if p.is_dir()}
-        anchor = documents_anchor([t.path for t in self.tabs if t.path])
-        if anchor is not None:
-            self.expanded.add(anchor)         # start where the documents live
+        # Pinned for the session: see filesystem_roots. Opening a file must not
+        # move the tree out from under the reader.
+        self.fs_anchor = documents_anchor([t.path for t in self.tabs if t.path])
+        if self.fs_anchor is not None:
+            self.expanded.add(self.fs_anchor)   # start where the documents live
         self._stop = threading.Event()
         self._window = None
         self._server = None
@@ -2577,7 +2584,7 @@ class Viewer:
     def _sidebar(self) -> dict:
         """Everything the two trees need, resolved at page-build time."""
         try:
-            files = build_fs_tree([t.path for t in self.tabs if t.path], self.expanded)
+            files = build_fs_tree(self.fs_anchor, self.expanded)
         except Exception:
             files = []          # an unreadable drive must not blank the page
         return {
