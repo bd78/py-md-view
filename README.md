@@ -163,6 +163,33 @@ Code blocks stay monospaced regardless. Switching is instant: it swaps one
 attribute and changes no content, so nothing re-renders. `--font serif` sets it
 from the command line, and the choice is remembered.
 
+### Find
+
+<kbd>Ctrl</kbd>+<kbd>F</kbd>, or the magnifier in the toolbar, opens a find bar
+for the document on screen. It shows **which match you are on and how many there
+are** — `3 / 17` — with arrows to step between them.
+
+| | |
+|---|---|
+| <kbd>Ctrl</kbd>+<kbd>F</kbd> | open, or focus the bar if it is already open |
+| <kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd> | next / previous match |
+| <kbd>F3</kbd> / <kbd>Shift</kbd>+<kbd>F3</kbd> | next / previous, without leaving the document |
+| <kbd>Esc</kbd> | close and clear the highlighting |
+
+Every match is highlighted and the current one is picked out in a stronger
+colour; stepping past the last match wraps to the first. Matching ignores case,
+and the view scrolls to keep the current match on screen. Your search text is
+remembered, so a refresh or a jump between tabs does not lose it.
+
+Highlighting is painted with the browser's Custom Highlight API rather than by
+inserting markup, so searching never disturbs the document — mermaid diagrams,
+highlighted code and CSV colours stay exactly as they were. One consequence:
+a match split across styling (`**wid**get`) is not found, because finding it
+would mean rewriting the tree.
+
+The bar searches the rendered document, so it works in Markdown, Mermaid, CSV
+and text views. Images have no text to search, and the button is hidden there.
+
 ### Zoom
 
 | Action | Keys |
@@ -179,6 +206,7 @@ any magnification because they are re-laid out rather than upscaled.
 
 | | |
 |---|---|
+| <kbd>Ctrl</kbd>+<kbd>F</kbd> | find in the document |
 | <kbd>Ctrl</kbd>+<kbd>B</kbd> | show / hide the sidebar |
 | <kbd>Ctrl</kbd>+<kbd>O</kbd> | open file(s) |
 | <kbd>Ctrl</kbd>+<kbd>T</kbd> | open in a new tab |
