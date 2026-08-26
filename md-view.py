@@ -3715,7 +3715,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Lightweight native viewer for Markdown, Mermaid, SVG and images.",
         epilog=(
             "Shortcuts: Ctrl++/Ctrl+- zoom, Ctrl+0 reset, F fit, W wide, "
-            "F5 reload, Ctrl+O open, Ctrl+B sidebar, Ctrl+D cycles style (or 1/2/3), "
+            "F5 reload, Ctrl+F find, Ctrl+O open, Ctrl+B sidebar, "
+            "Ctrl+D cycles style (or 1/2/3), "
             "[ back, F11 fullscreen."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
