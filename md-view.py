@@ -786,6 +786,45 @@ pre.csv {
 body.is-csv #alignBtn { display: grid; }
 #alignBtn[aria-pressed="true"] { background: var(--btn-active); color: var(--accent); }
 
+/* ---------- find bar ---------- */
+#findbar {
+  position: fixed; top: calc(var(--chrome) + 10px); right: 20px; z-index: 140;
+  display: flex; align-items: center; gap: 2px;
+  background: var(--menu-bg); border: 1px solid var(--bar-border);
+  border-radius: 10px; box-shadow: var(--shadow); padding: 5px 6px 5px 10px;
+}
+#findbar[hidden] { display: none; }
+#findInput {
+  appearance: none; border: 0; background: transparent; color: var(--fg);
+  font: inherit; font-size: 13px; width: 200px; padding: 3px 0; outline: none;
+}
+#findInput::placeholder { color: var(--fg-faint); }
+#findCount {
+  font-size: 11.5px; color: var(--fg-muted); font-variant-numeric: tabular-nums;
+  min-width: 56px; text-align: right; padding: 0 8px 0 4px; white-space: nowrap;
+}
+#findbar.none #findCount { color: #cf222e; }
+#findbar .sep { width: 1px; height: 16px; background: var(--bar-border); margin: 0 3px; }
+#findbar button {
+  appearance: none; border: 0; background: transparent; color: var(--fg-muted);
+  width: 24px; height: 24px; border-radius: 6px; cursor: pointer;
+  display: grid; place-items: center; font: inherit; font-size: 14px; line-height: 1;
+}
+#findbar button:hover:not(:disabled) { background: var(--btn-hover); color: var(--fg); }
+#findbar button:disabled { opacity: .3; cursor: default; }
+#findbar button svg {
+  width: 13px; height: 13px; fill: none; stroke: currentColor;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+body.mode-image #findBtn, body.mode-blank #findBtn { display: none; }
+
+/* Painted through the Custom Highlight API, so the document itself is never
+   rewritten -- mermaid diagrams, highlighted code and csv colours stay put. */
+::highlight(mdv-find) { background: #fff2a8; color: #1c1e21; }
+::highlight(mdv-find-current) { background: #ff9a3c; color: #1c1e21; }
+:root[data-style="dark"] ::highlight(mdv-find) { background: #4a4327; color: #ffffff; }
+:root[data-style="dark"] ::highlight(mdv-find-current) { background: #b7791f; color: #ffffff; }
+
 /* ---------- welcome / error ---------- */
 .mdv-center {
   position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
@@ -1045,6 +1084,12 @@ VIEWER_JS = r"""
 
   document.addEventListener("keydown", function (e) {
     var ctrl = e.ctrlKey || e.metaKey;
+    var target = e.target;
+    var typing = !!target && (target.tagName === "INPUT"
+                              || target.tagName === "TEXTAREA"
+                              || target.isContentEditable);
+    if (ctrl && e.key.toLowerCase() === "f") { e.preventDefault(); openFind(); return; }
+    if (e.key === "F3") { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); return; }
     if (ctrl && (e.key === "+" || e.key === "=" || e.code === "NumpadAdd")) {
       e.preventDefault(); step(+1); return;
     }
@@ -1071,9 +1116,10 @@ VIEWER_JS = r"""
     if (e.key === "F11") { e.preventDefault(); call("toggle_fullscreen"); return; }
     if (e.key === "Escape") {
       if (anyMenuOpen()) { closeMenus(null); return; }
+      if (findOpen()) { closeFind(); return; }
       call("escape"); return;
     }
-    if (!ctrl && !e.altKey) {
+    if (!ctrl && !e.altKey && !typing) {
       if (e.key === "f") { e.preventDefault(); doFit(); return; }
       // 1/2/3 pick a style directly; they also label the menu rows.
       if (e.key >= "1" && e.key <= String(STYLES.length)) {
@@ -1432,6 +1478,163 @@ VIEWER_JS = r"""
   }
 
   /* ------------------------------------------------------------------ */
+  /* find in document                                                   */
+  /* ------------------------------------------------------------------ */
+
+  var findBar = document.getElementById("findbar");
+  var findInput = document.getElementById("findInput");
+  var findCount = document.getElementById("findCount");
+  var findRanges = [];
+  var findIndex = -1;
+  var findTimer = null;
+  var FIND_CAP = 5000;
+  var CAN_HIGHLIGHT = typeof CSS !== "undefined" && !!CSS.highlights &&
+                      typeof Highlight === "function";
+
+  /* Ranges over the document's text, one per occurrence. A match straddling two
+     text nodes (bold in the middle of a phrase) is not found: spanning them would
+     mean rewriting the tree, which is exactly what this approach avoids. */
+  function collectMatches(query) {
+    var out = [];
+    if (!query || !CAN_HIGHLIGHT || !content) return out;
+    var needle = query.toLowerCase();
+    var walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        if (!node.data) return NodeFilter.FILTER_REJECT;
+        var parent = node.parentElement;
+        if (!parent) return NodeFilter.FILTER_REJECT;
+        var tag = parent.tagName;
+        if (tag === "SCRIPT" || tag === "STYLE") return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    var node;
+    while ((node = walker.nextNode())) {
+      var hay = node.data.toLowerCase();
+      var at = hay.indexOf(needle);
+      while (at >= 0) {
+        var range = document.createRange();
+        range.setStart(node, at);
+        range.setEnd(node, at + needle.length);
+        out.push(range);
+        if (out.length >= FIND_CAP) return out;
+        at = hay.indexOf(needle, at + needle.length);
+      }
+    }
+    return out;
+  }
+
+  function paintMatches() {
+    if (!CAN_HIGHLIGHT) return;
+    CSS.highlights.delete("mdv-find");
+    CSS.highlights.delete("mdv-find-current");
+    if (!findRanges.length) return;
+    var rest = new Highlight();
+    findRanges.forEach(function (r, i) { if (i !== findIndex) rest.add(r); });
+    CSS.highlights.set("mdv-find", rest);
+    if (findIndex >= 0 && findRanges[findIndex]) {
+      // The current match sits in its own highlight, so it always paints on top.
+      CSS.highlights.set("mdv-find-current", new Highlight(findRanges[findIndex]));
+    }
+  }
+
+  function updateFindCount() {
+    if (!findCount || !findInput) return;
+    var hasQuery = !!findInput.value;
+    findBar.classList.toggle("none", hasQuery && findRanges.length === 0);
+    findCount.textContent = !hasQuery ? ""
+      : findRanges.length ? (findIndex + 1) + " / " + findRanges.length
+      : "0 / 0";
+    var prev = document.getElementById("findPrev");
+    var next = document.getElementById("findNext");
+    if (prev) prev.disabled = findRanges.length < 1;
+    if (next) next.disabled = findRanges.length < 1;
+  }
+
+  function scrollToMatch() {
+    if (findIndex < 0 || !findRanges[findIndex] || !scroller) return;
+    var rect = findRanges[findIndex].getBoundingClientRect();
+    if (!rect || (!rect.width && !rect.height)) return;
+    var box = scroller.getBoundingClientRect();
+    var margin = 56;
+    if (rect.top < box.top + margin || rect.bottom > box.bottom - margin) {
+      scroller.scrollTop += (rect.top - box.top) - scroller.clientHeight / 3;
+    }
+    if (rect.left < box.left + 8 || rect.right > box.right - 8) {
+      scroller.scrollLeft += (rect.left - box.left) - scroller.clientWidth / 3;
+    }
+  }
+
+  function runFind(fromStart) {
+    if (!findInput) return;
+    findRanges = collectMatches(findInput.value);
+    if (!findRanges.length) findIndex = -1;
+    else if (fromStart || findIndex < 0 || findIndex >= findRanges.length) findIndex = 0;
+    paintMatches();
+    updateFindCount();
+    if (findIndex >= 0) scrollToMatch();
+  }
+
+  function stepFind(delta) {
+    if (!findRanges.length) return;
+    findIndex = (findIndex + delta + findRanges.length) % findRanges.length;
+    paintMatches();
+    updateFindCount();
+    scrollToMatch();
+  }
+
+  function findOpen() {
+    return !!findBar && !findBar.hidden;
+  }
+
+  function openFind() {
+    if (!findBar || mode === "image" || mode === "blank") return;
+    findBar.hidden = false;
+    findInput.focus();
+    findInput.select();
+    if (findInput.value) runFind(true); else updateFindCount();
+  }
+
+  function closeFind() {
+    if (!findBar) return;
+    findBar.hidden = true;
+    if (CAN_HIGHLIGHT) {
+      CSS.highlights.delete("mdv-find");
+      CSS.highlights.delete("mdv-find-current");
+    }
+    findRanges = [];
+    findIndex = -1;
+    findBar.classList.remove("none");
+    call("set_find_query", findInput ? findInput.value : "");
+  }
+
+  if (findInput) {
+    if (CFG.findQuery) findInput.value = CFG.findQuery;
+    findInput.addEventListener("input", function () {
+      clearTimeout(findTimer);
+      findTimer = setTimeout(function () { runFind(true); }, 90);
+    });
+    findInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); stepFind(e.shiftKey ? -1 : 1); }
+      else if (e.key === "Escape") { e.preventDefault(); closeFind(); }
+    });
+  }
+  on("findBtn", openFind);
+  on("findPrev", function () { stepFind(-1); });
+  on("findNext", function () { stepFind(1); });
+  on("findClose", closeFind);
+
+  /* test hook */
+  window.__mdv_find = {
+    open: openFind, close: closeFind, step: stepFind, run: runFind,
+    state: function () {
+      return { open: findOpen(), total: findRanges.length, index: findIndex,
+               label: findCount ? findCount.textContent : "",
+               supported: CAN_HIGHLIGHT };
+    }
+  };
+
+  /* ------------------------------------------------------------------ */
   /* tabs                                                               */
   /* ------------------------------------------------------------------ */
 
@@ -1717,6 +1920,10 @@ ICONS = {
     "panel": '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/>'
              '<path d="M9 4v16"/></svg>',
     "font": '<svg viewBox="0 0 24 24"><path d="M4 19l6-14 6 14M6.5 14h7M16 19h4"/></svg>',
+    "find": '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/>'
+            '<path d="M20.5 20.5L16.5 16.5"/></svg>',
+    "up": '<svg viewBox="0 0 24 24"><path d="M6 15l6-6 6 6"/></svg>',
+    "down": '<svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>',
     "align": '<svg viewBox="0 0 24 24"><path d="M4 6h6M4 12h6M4 18h6'
              'M14 6h6M14 12h6M14 18h6"/></svg>',
 }
@@ -1763,6 +1970,21 @@ def sidebar_html() -> str:
 <div id="sideResize" title="Drag to resize"></div>"""
 
 
+def find_bar_html() -> str:
+    """Search UI for the open document. Hidden until asked for."""
+    return f"""<div id="findbar" role="search" hidden>
+  <input id="findInput" type="text" placeholder="Find in document"
+         spellcheck="false" autocomplete="off" aria-label="Find in document">
+  <span id="findCount" aria-live="polite"></span>
+  <button id="findPrev" type="button" title="Previous match (Shift+Enter)"
+          disabled>{ICONS["up"]}</button>
+  <button id="findNext" type="button" title="Next match (Enter)"
+          disabled>{ICONS["down"]}</button>
+  <div class="sep"></div>
+  <button id="findClose" type="button" title="Close (Esc)">&times;</button>
+</div>"""
+
+
 def tabs_html(tabs: list[dict], active: int) -> str:
     """The tab strip. `tabs` is a list of {"title", "path", "stale"} dicts."""
     cells = []
@@ -1806,6 +2028,7 @@ def toolbar_html(title: str, subtitle: str, can_go_back: bool, mode: str, style:
   <button class="tb" id="backBtn" title="Back ([)"{back_disabled}>{ICONS["back"]}</button>
   <button class="tb" id="openBtn" title="Open file (Ctrl+O)">{ICONS["open"]}</button>
   <button class="tb" id="reloadBtn" title="Rebuild this tab from disk (F5)">{ICONS["reload"]}</button>
+  <button class="tb" id="findBtn" title="Find in document (Ctrl+F)">{ICONS["find"]}</button>
   <div class="sep"></div>
   <div class="title" dir="ltr"><b>{label}</b>{sub} {dims}</div>
   <div class="sep"></div>
@@ -1837,7 +2060,8 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
                view_box: tuple[float, float] | None = None,
                tabs: list[dict] | None = None, active_tab: int = 0,
                sidebar: dict | None = None, font: str = "system",
-               csv: bool = False, csv_align: bool = False) -> str:
+               csv: bool = False, csv_align: bool = False,
+               find_query: str = "") -> str:
     """Assemble a complete, self-contained HTML page for the webview."""
     if style not in STYLES:
         style = STYLES[0]
@@ -1854,7 +2078,7 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
         "steps": list(ZOOM_STEPS), "vector": vector,
         "viewBox": list(view_box) if view_box else None,
         "styles": list(STYLES), "fonts": list(FONTS),
-        "csv": csv, "csvAlign": csv_align,
+        "csv": csv, "csvAlign": csv_align, "findQuery": find_query,
         "tabCount": len(tabs), "activeTab": active_tab,
         "docsTree": sidebar.get("docs") or [],
         "filesTree": sidebar.get("files") or [],
@@ -1893,6 +2117,7 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
 {toolbar_html(title, subtitle, can_go_back, mode, style, font, csv_align)}
 {sidebar_html()}
 {tabs_html(tabs, active_tab)}
+{find_bar_html()}
 <div id="scroller"><div id="content">{body}</div></div>
 <div id="toast"></div>
 <script>window.__MDV__ = {json.dumps(cfg)};</script>
@@ -2409,7 +2634,7 @@ def render_document(path: Path, *, style: str, zoom: float, fit: bool,
                     scroll: float, can_go_back: bool,
                     tabs: list[dict] | None = None, active_tab: int = 0,
                     sidebar: dict | None = None, font: str = "system",
-                    csv_align: bool = False) -> str:
+                    csv_align: bool = False, find_query: str = "") -> str:
     parts = document_parts(path, csv_align=csv_align)
     return build_page(
         body=parts["body"], title=path.name, subtitle=parts["subtitle"],
@@ -2421,6 +2646,7 @@ def render_document(path: Path, *, style: str, zoom: float, fit: bool,
         view_box=parts["view_box"], tabs=tabs, active_tab=active_tab,
         sidebar=sidebar, font=font,
         csv=bool(parts.get("csv")), csv_align=csv_align,
+        find_query=find_query,
     )
 
 
@@ -2521,6 +2747,9 @@ class Viewer:
         self.style = style
         self.font = font if font in FONTS else "system"
         self.csv_align = bool(self.prefs.get("csv_align", False))
+        # Kept for the session only: a repaint should not lose what you
+        # were searching for, but it does not belong in prefs.
+        self.find_query = ""
         self.zoom = zoom
         self.fit = bool(self.prefs.get("fit", True))
         self.watch_enabled = watch
@@ -2656,7 +2885,7 @@ class Viewer:
                 path, style=self.style, zoom=self.zoom, fit=self.fit,
                 scroll=scroll, can_go_back=bool(tab.history),
                 tabs=tabs, active_tab=active, sidebar=side, font=self.font,
-                csv_align=self.csv_align,
+                csv_align=self.csv_align, find_query=self.find_query,
             )
             if not self.mermaid_enabled:
                 html_text = html_text.replace("__mdv_mermaidReady()", "void 0")
@@ -3169,6 +3398,14 @@ class Api:
 
     def escape(self):
         return None
+
+    def set_find_query(self, query: str):
+        """Remember the search text so a repaint can put it back."""
+        try:
+            self._viewer.find_query = str(query or "")[:200]
+        except (TypeError, ValueError):
+            self._viewer.find_query = ""
+        return True
 
     def set_font(self, name: str):
         """Change the body typeface. CSS-only, so no repaint is needed."""
