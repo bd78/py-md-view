@@ -14,21 +14,20 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import functools
 import html
 import json
 import os
 import re
-import secrets
-import shutil
 import socket
 import sys
-import tempfile
 import threading
 import time
-import urllib.error
-import urllib.request
-import webbrowser
 from pathlib import Path
+
+# urllib.request, secrets, shutil, tempfile and webbrowser are imported where
+# they are used: together they cost ~45 ms at start-up, and the common
+# "hand the file to the running window" launch needs none of them.
 
 __version__ = "1.0.0"
 APP_NAME = "md-view"
@@ -177,6 +176,9 @@ def fetch_mermaid(force: bool = False, timeout: int = 60, quiet: bool = False) -
         existing = find_mermaid()
         if existing:
             return existing
+    import urllib.error
+    import urllib.request
+
     target = assets_dir() / "mermaid.min.js"
     tmp = target.with_suffix(".part")
     try:
@@ -211,6 +213,13 @@ def _markdown_module():
         return None
 
 
+MERMAID_FENCE = re.compile(
+    r"^(?P<indent>[ ]{0,3})(?P<fence>`{3,}|~{3,})[ ]*"
+    r"(?:\{[ ]*\.?)?(?P<lang>mermaid)\b[^\n]*$",
+    re.IGNORECASE,
+)
+
+
 def _build_mermaid_extension(markdown_mod):
     """A preprocessor that lifts ```mermaid fences out before any other parsing.
 
@@ -220,17 +229,11 @@ def _build_mermaid_extension(markdown_mod):
     from markdown.extensions import Extension
     from markdown.preprocessors import Preprocessor
 
-    fence_open = re.compile(
-        r"^(?P<indent>[ ]{0,3})(?P<fence>`{3,}|~{3,})[ ]*"
-        r"(?:\{[ ]*\.?)?(?P<lang>mermaid)\b[^\n]*$",
-        re.IGNORECASE,
-    )
-
     class MermaidPreprocessor(Preprocessor):
         def run(self, lines):
             out, i = [], 0
             while i < len(lines):
-                m = fence_open.match(lines[i])
+                m = MERMAID_FENCE.match(lines[i])
                 if not m:
                     out.append(lines[i])
                     i += 1
@@ -323,6 +326,8 @@ def rewrite_urls(html_text: str, base: Path) -> str:
     The rendered HTML lives in a temp directory, so relative references would
     otherwise dangle. Anchors and external schemes are left untouched.
     """
+    from urllib.request import url2pathname
+
     def sub(m):
         url = m.group("url")
         if not url or ABSOLUTE_URL.match(url):
@@ -334,7 +339,7 @@ def rewrite_urls(html_text: str, base: Path) -> str:
         if not url:
             return m.group(0)
         try:
-            target = (base / urllib.request.url2pathname(url)).resolve()
+            target = (base / url2pathname(url)).resolve()
         except (OSError, ValueError):
             return m.group(0)
         return f'{m.group("attr")}{m.group("q")}{target.as_uri()}{frag}{m.group("q")}'
@@ -863,11 +868,13 @@ kbd.hint { margin: 0 2px; }
 """
 
 
+@functools.cache
 def pygments_css() -> str:
     """Syntax-highlighting rules for every style, each scoped by data-style.
 
     All three sets ship in the page, so switching style is instant and needs no
-    re-render.
+    re-render. The result never changes, so it is built once per process
+    rather than on every navigation.
     """
     try:
         from pygments.formatters import HtmlFormatter
@@ -992,9 +999,7 @@ VIEWER_JS = r"""
     persist();
   }
 
-  function resetZoom() {
-    if (mode === "image") { setZoom(1); } else { setZoom(1); }
-  }
+  function resetZoom() { setZoom(1); }
 
   var persistTimer = null;
   function persist() {
@@ -1183,7 +1188,7 @@ VIEWER_JS = r"""
     else call("set_doc_collapsed", collapsedDocPaths());
   }
 
-  var KEY_SEP = "";
+  var KEY_SEP = "\u001f";
 
   function makeNode(item, depth, kind, rootId) {
     var node = document.createElement("div");
@@ -2160,7 +2165,7 @@ def sniff_delimiter(sample: str, ext: str) -> str:
         return csv_mod.Sniffer().sniff(sample, delimiters=",;\t|").delimiter
     except Exception:
         # Sniffer gives up on short or irregular files; count candidates instead.
-        first = sample.splitlines()[0] if sample.splitlines() else ""
+        first = sample.split("\n", 1)[0]
         counts = {d: first.count(d) for d in (",", ";", "\t", "|")}
         best = max(counts, key=counts.get)
         return best if counts[best] else ","
@@ -2183,8 +2188,9 @@ def parse_delimited(text: str, ext: str) -> tuple[list[list[str]], str, bool]:
             rows.append(row)
     except (csv_mod.Error, ValueError):
         # Malformed quoting: fall back to a plain split so something still shows.
-        rows = [line.split(delimiter) for line in text.splitlines()[:CSV_MAX_ROWS]]
-        truncated = len(text.splitlines()) > CSV_MAX_ROWS
+        lines = text.splitlines()
+        rows = [line.split(delimiter) for line in lines[:CSV_MAX_ROWS]]
+        truncated = len(lines) > CSV_MAX_ROWS
     return rows, delimiter, truncated
 
 
@@ -2198,12 +2204,13 @@ def render_delimited(rows: list[list[str]], delimiter: str, *,
     if not rows:
         return '<div class="csv-info">Empty file.</div>'
 
-    columns = max(len(row) for row in rows)
+    columns = max(map(len, rows))
     widths = [0] * columns
     if aligned:
         for row in rows:
             for index, field in enumerate(row):
-                widths[index] = max(widths[index], len(field))
+                if len(field) > widths[index]:
+                    widths[index] = len(field)
 
     shown = html.escape("\\t" if delimiter == "\t" else delimiter)
     info = (f'<div class="csv-info">{len(rows):,} rows &times; {columns} columns'
@@ -2211,14 +2218,23 @@ def render_delimited(rows: list[list[str]], delimiter: str, *,
             f'{" &middot; aligned" if aligned else ""}</div>')
 
     sep = f'<span class="csv-d">{html.escape(delimiter)}</span>'
+    # This runs once per field on files up to CSV_MAX_ROWS long, so the
+    # per-cell work is kept to an escape and a couple of concatenations.
+    opens = [f'<span class="c{index % CSV_COLOURS}">' for index in range(columns)]
+    escape = html.escape
+    last = columns - 1
     lines = []
     for number, row in enumerate(rows):
-        cells = []
-        for index, field in enumerate(row):
-            text = html.escape(field)
-            if aligned and index < columns - 1:
-                text += "&nbsp;" * (widths[index] - len(field))
-            cells.append(f'<span class="c{index % CSV_COLOURS}">{text}</span>')
+        if aligned:
+            cells = [
+                opens[index] + escape(field)
+                + ("&nbsp;" * (widths[index] - len(field)) if index < last else "")
+                + "</span>"
+                for index, field in enumerate(row)
+            ]
+        else:
+            cells = [opens[index] + escape(field) + "</span>"
+                     for index, field in enumerate(row)]
         klass = "csv-row csv-head" if number == 0 else "csv-row"
         lines.append(f'<div class="{klass}">{sep.join(cells)}</div>')
 
@@ -2240,11 +2256,12 @@ def read_text(path: Path) -> str:
 
 
 def human_size(n: int) -> str:
-    for unit in ("B", "KB", "MB", "GB"):
-        if n < 1024 or unit == "GB":
-            return f"{n:.0f} {unit}" if unit == "B" else f"{n / 1:.0f} {unit}"
-        n /= 1024.0
-    return f"{n:.0f} GB"
+    size = float(n)
+    for unit in ("B", "KB", "MB"):
+        if size < 1024:
+            return f"{size:.0f} {unit}"
+        size /= 1024.0
+    return f"{size:.0f} GB"
 
 
 SVG_TAG = re.compile(r"<svg\b[^>]*>", re.IGNORECASE | re.DOTALL)
@@ -2299,41 +2316,42 @@ TREE_CHILD_LIMIT = 500   # a directory listing this long is already unreadable
 TREE_MAX_DEPTH = 24
 
 
+_WIN_HIDDEN_ATTRS = 0x2 | 0x4   # FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM
+_IS_WINDOWS = sys.platform == "win32"
+
+
 def _is_hidden(entry: os.DirEntry) -> bool:
     """Skip dot-files and, on Windows, hidden/system entries."""
     if entry.name.startswith("."):
         return True
-    if sys.platform == "win32":
+    if _IS_WINDOWS:
         try:
-            attrs = entry.stat(follow_symlinks=False).st_file_attributes
+            # scandir already fetched the attributes on Windows: no extra syscall.
+            return bool(entry.stat(follow_symlinks=False).st_file_attributes
+                        & _WIN_HIDDEN_ATTRS)
         except (OSError, AttributeError):
             return False
-        FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM = 0x2, 0x4
-        return bool(attrs & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))
     return False
 
 
-def dir_entries(path: Path) -> tuple[list[dict], int]:
-    """Sub-directories and viewable files of `path`, plus a truncation count.
-
-    Only viewable files are listed: this tree exists to find something to open,
-    and hiding the rest keeps it short.
-    """
+def _scan_dir(path: Path) -> tuple[list[dict], int] | None:
+    """One pass over a directory, or None when it cannot be read."""
     try:
         with os.scandir(path) as scan:
             raw = list(scan)
     except (OSError, ValueError):
-        return [], 0
+        return None
 
     dirs: list[dict] = []
     files: list[dict] = []
+    splitext = os.path.splitext
     for entry in raw:
         try:
             if _is_hidden(entry):
                 continue
             if entry.is_dir(follow_symlinks=False):
                 dirs.append({"name": entry.name, "path": entry.path, "dir": True})
-            elif Path(entry.name).suffix.lower() in VIEWABLE_EXTS:
+            elif splitext(entry.name)[1].lower() in VIEWABLE_EXTS:
                 files.append({"name": entry.name, "path": entry.path, "dir": False})
         except OSError:
             continue
@@ -2345,6 +2363,39 @@ def dir_entries(path: Path) -> tuple[list[dict], int]:
     if len(merged) > TREE_CHILD_LIMIT:
         return merged[:TREE_CHILD_LIMIT], len(merged) - TREE_CHILD_LIMIT
     return merged, 0
+
+
+# Listings keyed by directory path, stamped with the directory's mtime. Every
+# navigation rebuilds the sidebar, which re-lists every expanded folder; a
+# folder whose mtime has not moved has the same children as last time.
+_DIR_CACHE: dict[str, tuple[int, tuple[list[dict], int]]] = {}
+_DIR_CACHE_LIMIT = 128
+
+
+def dir_entries(path: Path) -> tuple[list[dict], int]:
+    """Sub-directories and viewable files of `path`, plus a truncation count.
+
+    Only viewable files are listed: this tree exists to find something to open,
+    and hiding the rest keeps it short. Callers must treat the result as
+    read-only; it may be served from the cache again.
+    """
+    key = str(path)
+    try:
+        stamp = os.stat(path).st_mtime_ns
+    except OSError:
+        stamp = None
+    if stamp is not None:
+        hit = _DIR_CACHE.get(key)
+        if hit is not None and hit[0] == stamp:
+            return hit[1]
+    result = _scan_dir(path)
+    if result is None:
+        return [], 0            # unreadable: never cache, it may become readable
+    if stamp is not None:
+        if len(_DIR_CACHE) >= _DIR_CACHE_LIMIT:
+            del _DIR_CACHE[next(iter(_DIR_CACHE))]
+        _DIR_CACHE[key] = (stamp, result)
+    return result
 
 
 def documents_anchor(doc_paths: list[Path]) -> Path | None:
@@ -2404,6 +2455,9 @@ def filesystem_roots(anchor: Path | None = None) -> list[dict]:
     return roots
 
 
+KEY_SEP = "\x1f"   # unit separator: cannot appear in a path or a root id
+
+
 def node_key(root_id: str, path: Path | str) -> str:
     """Identity of a row: which root it hangs from, plus its path.
 
@@ -2412,7 +2466,7 @@ def node_key(root_id: str, path: Path | str) -> str:
     made those occurrences share one open/closed state, so expanding a folder in
     one place silently expanded it in the other.
     """
-    return f"{root_id}\x1f{path}"
+    return f"{root_id}{KEY_SEP}{path}"
 
 
 def _same_path(a: Path, b: Path) -> bool:
@@ -2553,9 +2607,10 @@ def _compact_tree(node: dict) -> None:
         node["children"] = children = only["children"]
 
 
-# Parsed documents, keyed by (path, mtime). Switching tabs should not re-parse
-# markdown or re-run pygments; only a real change or an explicit refresh should.
-_DOC_CACHE: dict[tuple[str, float | None], dict] = {}
+# Parsed documents, keyed by (path, mtime, csv_align). Switching tabs should
+# not re-parse markdown or re-run pygments; only a real change or an explicit
+# refresh should.
+_DOC_CACHE: dict[tuple[str, float | None, bool], dict] = {}
 _DOC_CACHE_LIMIT = 32
 
 
@@ -2581,8 +2636,8 @@ def document_parts(path: Path, *, csv_align: bool = False) -> dict:
     if cached is not None:
         return cached
     parts = _parse_document(path, csv_align=csv_align)
-    if len(_DOC_CACHE) >= _DOC_CACHE_LIMIT:
-        _DOC_CACHE.clear()
+    while len(_DOC_CACHE) >= _DOC_CACHE_LIMIT:
+        del _DOC_CACHE[next(iter(_DOC_CACHE))]     # oldest first
     _DOC_CACHE[key] = parts
     return parts
 
@@ -2740,6 +2795,7 @@ class Viewer:
     def __init__(self, paths: list[Path] | Path | None = None, *, style: str, zoom: float,
                  watch: bool = True, mermaid: bool = True, debug: bool = False,
                  font: str = "system"):
+        import tempfile
         import webview  # imported here so --register works without a GUI stack
 
         self.webview = webview
@@ -2780,7 +2836,7 @@ class Viewer:
         # Node keys, not paths: entries saved by an older version carry no
         # root and are dropped rather than guessed at.
         self.expanded = {k for k in (self.prefs.get("expanded") or [])
-                         if isinstance(k, str) and "" in k}
+                         if isinstance(k, str) and KEY_SEP in k}
         # Pinned for the session: see filesystem_roots. Opening a file must not
         # move the tree out from under the reader.
         self.fs_anchor = documents_anchor([t.path for t in self.tabs if t.path])
@@ -3134,6 +3190,8 @@ class Viewer:
     # -- lifecycle --------------------------------------------------------- #
 
     def run(self) -> None:
+        import shutil
+
         api = Api(self)
         with self._nav:
             start_url = self._stage(self._page_for(self.tab, 0.0))
@@ -3191,7 +3249,7 @@ class Viewer:
         These are node keys the page got from us, so they round-trip exactly;
         no normalising is needed or wanted.
         """
-        self.expanded = {k for k in (keys or []) if isinstance(k, str) and "" in k}
+        self.expanded = {k for k in (keys or []) if isinstance(k, str) and KEY_SEP in k}
         self._persist()
 
     @classmethod
@@ -3291,6 +3349,7 @@ class Api:
 
     def open_external(self, url: str):
         if re.match(r"^(https?|ftp|mailto):", url, re.IGNORECASE):
+            import webbrowser
             webbrowser.open(url)
 
     # tabs
@@ -3442,6 +3501,8 @@ class InstanceServer:
     """A loopback listener that accepts paths from later launches."""
 
     def __init__(self, viewer: Viewer):
+        import secrets
+
         self.viewer = viewer
         self.token = secrets.token_hex(16)
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -3532,9 +3593,10 @@ def _path_from_href(raw: str, base: Path) -> Path | None:
     raw = raw.split("#", 1)[0]
     if not raw:
         return None
+    from urllib.parse import unquote, urlparse
+    from urllib.request import url2pathname
     try:
         if raw.lower().startswith("file:"):
-            from urllib.parse import unquote, urlparse
             parsed = urlparse(raw)
             local = unquote(parsed.path)
             if sys.platform == "win32" and re.match(r"^/[A-Za-z]:", local):
@@ -3542,7 +3604,7 @@ def _path_from_href(raw: str, base: Path) -> Path | None:
             if parsed.netloc and sys.platform == "win32":
                 local = rf"\\{parsed.netloc}{local}"
             return Path(local).resolve()
-        return (base / urllib.request.url2pathname(raw)).resolve()
+        return (base / url2pathname(raw)).resolve()
     except (OSError, ValueError):
         return None
 
@@ -3751,6 +3813,15 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _warm_renderers() -> None:
+    """Import the markdown stack and build the highlight CSS, off the main thread."""
+    try:
+        _markdown_module()
+        pygments_css()
+    except Exception:
+        pass        # purely a head start; the real render reports any problem
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -3799,6 +3870,10 @@ def main(argv: list[str] | None = None) -> int:
         if any(wants_mermaid(p) for p in paths):
             fetch_mermaid(timeout=30)
 
+    # pywebview takes a few hundred milliseconds to import (it loads the .NET
+    # bridge on Windows). Pull markdown and pygments in alongside it, so the
+    # first document is ready to render the moment the window can show it.
+    threading.Thread(target=_warm_renderers, daemon=True).start()
     try:
         import webview  # noqa: F401
     except ImportError:
