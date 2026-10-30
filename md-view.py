@@ -680,6 +680,27 @@ body.mode-doc.wide #content { max-width: none; }
 }
 :root[data-style="github-ext"] body.mode-doc.wide #content > * { max-width: none; }
 
+/* github-ext zoom magnifies instead of reflowing. The page is laid out at the
+   window's width as it is at 100% (--view-w, kept current by the viewer
+   script, in unzoomed pixels) and the zoom then scales that layout as a
+   whole, so zooming in makes the document bigger than the window and it is
+   explored by dragging, like an image. Elsewhere zoom reflows the text. */
+:root[data-style="github-ext"] body.mode-doc #scroller { scrollbar-gutter: stable; }
+:root[data-style="github-ext"] body.mode-doc #content { width: var(--view-w, auto); }
+
+/* SVG in a document: a picture standing on its own line -- an image or inline
+   markup -- leaves the text column and is drawn across the whole window. It
+   is vector, so it stays sharp at that size and at any zoom. */
+:root[data-style="github-ext"] body.mode-doc #content > p:has(> img[src*=".svg" i]:only-child),
+:root[data-style="github-ext"] body.mode-doc #content > p:has(> svg[viewBox]:only-child) {
+  max-width: 100%;
+}
+:root[data-style="github-ext"] body.mode-doc #content > p > img[src*=".svg" i]:only-child,
+:root[data-style="github-ext"] body.mode-doc #content > p > svg[viewBox]:only-child,
+:root[data-style="github-ext"] body.mode-doc #content > svg[viewBox] {
+  display: block; width: 100%; height: auto; max-width: none;
+}
+
 #content > :first-child { margin-top: 0; }
 h1, h2, h3, h4, h5, h6 { margin: 1.6em 0 .6em; line-height: 1.28; font-weight: 600; }
 h1 { font-size: 1.9em; padding-bottom: var(--h-pad); border-bottom: 1px solid var(--h-rule); }
@@ -772,6 +793,16 @@ body.mode-image #scroller {
   cursor: grab;
 }
 body.mode-image #scroller.panning { cursor: grabbing; }
+
+/* Documents and diagrams pan by dragging anywhere that is not text: the
+   margins and the diagrams show a hand, text keeps its I-beam for selecting. */
+body.mode-doc #scroller, body.mode-mermaid #scroller { cursor: grab; }
+body.mode-doc #content *, body.mode-mermaid #content * { cursor: auto; }
+#content pre.mermaid svg, #content pre.mermaid svg *,
+#content img, #content p > svg, #content p > svg *, #content > svg, #content > svg * {
+  cursor: grab;
+}
+body.dragging, body.dragging * { cursor: grabbing !important; user-select: none; }
 body.mode-image #scroller.fits { overflow: hidden; }
 #imgview {
   display: block; border-radius: 0; max-width: none;
@@ -980,9 +1011,51 @@ VIEWER_JS = r"""
         scroller.scrollTop  = before.ry * img.offsetHeight - before.y;
       }
     } else {
+      // Keep whatever sits under the anchor (the pointer, or the middle of the
+      // view) where it is. Not on the first paint: the saved scroll position
+      // is restored after that.
+      var previous = parseFloat(content.style.zoom || "0");
+      var keep = previous && previous !== zoom
+        ? holdPoint(anchor || { x: scroller.clientWidth / 2, y: scroller.clientHeight / 2 })
+        : null;
       content.style.zoom = zoom;
+      if (keep) keep();
     }
     updateLabel();
+  }
+
+  /* The element that scrolls sideways for `el`: a wide diagram, table or code
+     block scrolls inside its own box; everything else scrolls the page. */
+  function scrollBoxX(el) {
+    for (var node = el; node && node !== scroller; node = node.parentElement) {
+      if (node.scrollWidth > node.clientWidth + 1) {
+        var ox = getComputedStyle(node).overflowX;
+        if (ox === "auto" || ox === "scroll") return node;
+      }
+    }
+    return scroller;
+  }
+
+  /* Remember the element under a point (scroller coordinates) and where in it
+     the point falls; the returned function scrolls it back under the point.
+     An element rather than a page fraction, because text reflows as it
+     zooms and the page height changes unevenly. */
+  function holdPoint(a) {
+    var sr = scroller.getBoundingClientRect();
+    var x = sr.left + a.x, y = sr.top + a.y;
+    var el = document.elementFromPoint(x, y);
+    if (!el || !content.contains(el)) el = content;
+    var r = el.getBoundingClientRect();
+    var fx = (x - r.left) / Math.max(1, r.width);
+    var fy = (y - r.top) / Math.max(1, r.height);
+    return function () {
+      var n = el.getBoundingClientRect();
+      var dx = n.left + fx * n.width - x, dy = n.top + fy * n.height - y;
+      var box = scrollBoxX(el), before = box.scrollLeft;
+      box.scrollLeft += dx;
+      if (box !== scroller) scroller.scrollLeft += dx - (box.scrollLeft - before);
+      scroller.scrollTop += dy;
+    };
   }
 
   function updateLabel() {
@@ -1091,6 +1164,105 @@ VIEWER_JS = r"""
   }
 
   /* ------------------------------------------------------------------ */
+  /* the unzoomed page width, for github-ext's magnifying zoom          */
+  /* ------------------------------------------------------------------ */
+
+  /* The scroller is not zoomed, so its width is the window's width at 100%.
+     #content takes it as its own width in github-ext (see the stylesheet). */
+  function updateViewWidth() {
+    content.style.setProperty("--view-w", scroller.clientWidth + "px");
+  }
+  if (content && scroller) {
+    updateViewWidth();
+    if (window.ResizeObserver) new ResizeObserver(updateViewWidth).observe(scroller);
+    else window.addEventListener("resize", updateViewWidth);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* drag to pan documents and diagrams                                 */
+  /* ------------------------------------------------------------------ */
+
+  /* True when (x, y) is over an actual character, so a drag there should
+     select text rather than pan. Whitespace beside or between blocks pans. */
+  function overText(x, y) {
+    if (!document.caretRangeFromPoint) return false;
+    var hit = document.caretRangeFromPoint(x, y);
+    if (!hit || hit.startContainer.nodeType !== 3) return false;
+    var node = hit.startContainer, probe = document.createRange();
+    var from = Math.max(0, hit.startOffset - 1);
+    var to = Math.min(node.length - 1, hit.startOffset);
+    for (var i = from; i <= to; i++) {
+      probe.setStart(node, i); probe.setEnd(node, i + 1);
+      var rects = probe.getClientRects();
+      for (var j = 0; j < rects.length; j++) {
+        var b = rects[j];
+        if (x >= b.left - 1 && x <= b.right + 1 && y >= b.top - 1 && y <= b.bottom + 1) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function canPan(e) {
+    var t = e.target;
+    if (!t || !t.closest || t.closest("a, button, input, textarea, select, summary, label")) {
+      return false;
+    }
+    // A press on a scrollbar belongs to the scrollbar. Measured on screen:
+    // inside zoomed content, client sizes are unzoomed but the pointer is not.
+    if (t.clientWidth && (t.offsetWidth > t.clientWidth + t.clientLeft
+                          || t.offsetHeight > t.clientHeight + t.clientTop)) {
+      var box = t.getBoundingClientRect(), scale = box.width / Math.max(1, t.offsetWidth);
+      if (e.clientX - box.left > (t.clientLeft + t.clientWidth) * scale ||
+          e.clientY - box.top > (t.clientTop + t.clientHeight) * scale) return false;
+    }
+    if (t.closest("pre.mermaid svg, svg, img")) return true;  // pictures always pan
+    return mode === "mermaid" || !overText(e.clientX, e.clientY);
+  }
+
+  if (mode === "doc" || mode === "mermaid") {
+    var drag = null, swallowClick = false;
+    scroller.addEventListener("mousedown", function (e) {
+      swallowClick = false;            // a new press starts a new gesture
+      if (e.button !== 0 || e.detail > 1 || !canPan(e)) return;
+      e.preventDefault();              // no text selection, no native svg drag
+      drag = { x: e.clientX, y: e.clientY, moved: false,
+               box: scrollBoxX(e.target), sl: 0, st: scroller.scrollTop };
+      drag.sl = drag.box.scrollLeft;
+      drag.pageSl = scroller.scrollLeft;
+    });
+    window.addEventListener("mousemove", function (e) {
+      if (!drag) return;
+      var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!drag.moved) {
+        if (Math.abs(dx) < 4 && Math.abs(dy) < 4) return;   // still a click
+        drag.moved = true;
+        document.body.classList.add("dragging");
+      }
+      drag.box.scrollLeft = drag.sl - dx;
+      if (drag.box !== scroller) scroller.scrollLeft = drag.pageSl - dx;
+      scroller.scrollTop = drag.st - dy;
+    });
+    window.addEventListener("mouseup", function () {
+      if (!drag) return;
+      if (drag.moved) {
+        swallowClick = true;           // a pan is not a click on what lies below
+        setTimeout(function () { swallowClick = false; }, 0);
+      } else {
+        // A plain click on blank space clears a selection, as it normally would.
+        var sel = window.getSelection();
+        if (sel && !sel.isCollapsed) sel.removeAllRanges();
+      }
+      drag = null;
+      document.body.classList.remove("dragging");
+    });
+    scroller.addEventListener("click", function (e) {
+      if (swallowClick) { e.preventDefault(); e.stopPropagation(); swallowClick = false; }
+    }, true);
+  }
+
+  /* ------------------------------------------------------------------ */
   /* wheel + keyboard                                                   */
   /* ------------------------------------------------------------------ */
 
@@ -1105,6 +1277,8 @@ VIEWER_JS = r"""
         rx: (scroller.scrollLeft + e.clientX - r.left) / img.offsetWidth,
         ry: (scroller.scrollTop + e.clientY - r.top) / img.offsetHeight
       };
+    } else if (mode !== "image") {
+      anchor = { x: e.clientX - r.left, y: e.clientY - r.top };   // zoom about the pointer
     }
     var factor = Math.exp(-e.deltaY * 0.0016);
     setZoom(zoom * factor, { anchor: anchor });
@@ -1888,17 +2062,22 @@ VIEWER_JS = r"""
         if (m && m[1].length > longest) longest = m[1].length;
       });
     });
+    // The window's width at 100%, whatever the zoom: zooming in then makes
+    // the chart wider than the window, so there is something to pan across,
+    // instead of redrawing it to fit at a larger type size.
+    var gutter = mode === "mermaid" ? 48 : 80;     // #content side padding
     return { useMaxWidth: false, fontSize: 13, sectionFontSize: 13, barHeight: 22,
+             useWidth: Math.max(400, scroller.clientWidth - gutter),
              leftPadding: Math.max(75, Math.min(320, Math.round(longest * 7.5) + 24)) };
   }
 
-  /* A gantt chart is drawn at the width of its container, once. In github-ext
-     that container is the window, so redraw when the window or the sidebar
-     changes its width. */
-  if (window.ResizeObserver && content) {
+  /* A gantt chart is drawn at a fixed width, once. In github-ext that width is
+     the window's, so redraw when the window or the sidebar changes it. The
+     scroller is watched rather than the content: zooming must not redraw. */
+  if (window.ResizeObserver && scroller) {
     var ganttWidth = 0, ganttTimer = null;
     new ResizeObserver(function () {
-      var w = content.clientWidth;
+      var w = scroller.clientWidth;
       if (!ganttWidth) { ganttWidth = w; return; }
       if (Math.abs(w - ganttWidth) < 2) return;
       ganttWidth = w;
@@ -1909,7 +2088,7 @@ VIEWER_JS = r"""
       if (!hasGantt) return;
       clearTimeout(ganttTimer);
       ganttTimer = setTimeout(function () { renderMermaid(currentStyle()); }, 200);
-    }).observe(content);
+    }).observe(scroller);
   }
 
   function escapeHtml(s) {

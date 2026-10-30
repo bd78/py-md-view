@@ -128,14 +128,18 @@ theme. Pick one from the toolbar's style menu, cycle with
 - **Light** — neutral slate, quiet heading rules, roomy line height
 - **Dark** — low-light palette
 - **GitHub** — faithful to github.com's rendered Markdown
-- **GitHub Ext** (the default) — GitHub's look, but wide tables are shown in
-  full. Text keeps its comfortable reading width; a table that does not fit
-  that column grows past it, centred, up to the width of the window, and only
-  scrolls sideways if it is wider than the whole window. Tables that already
-  fit stay aligned with the text. Mermaid diagrams get the same treatment:
-  they are drawn at their natural size rather than shrunk into the column,
-  and Gantt charts stretch across the whole window, with larger labels, and
-  redraw when the window or sidebar changes width.
+- **GitHub Ext** (the default) — GitHub's look, built for wide content. Text
+  keeps its comfortable reading width, but everything else may use the whole
+  window:
+  - a table that does not fit the text column grows past it, centred, and
+    only scrolls sideways if it is wider than the whole window;
+  - an SVG standing on its own line, as an image or inline markup, is drawn
+    across the full window width;
+  - Mermaid diagrams are drawn at their natural size rather than shrunk, and
+    Gantt charts stretch across the window with larger labels, redrawing
+    when the window or sidebar changes width;
+  - zoom magnifies the page instead of re-wrapping it, so you drag to move
+    around a zoomed document (see Zoom).
 
 The choice is remembered, along with your zoom level, in
 `%LOCALAPPDATA%\md-view\prefs.json`. Without a saved preference the viewer
@@ -206,9 +210,21 @@ and text views. Images have no text to search, and the button is hidden there.
 | Reset to 100% | <kbd>Ctrl</kbd>+<kbd>0</kbd>, <kbd>0</kbd>, or click the percentage |
 | Fit to window | <kbd>F</kbd>, or double-click an image |
 
-Documents reflow as you zoom. Images and SVGs scale about the pointer and can
-be dragged to pan once they overflow the window; SVG and Mermaid stay crisp at
-any magnification because they are re-laid out rather than upscaled.
+Zoom keeps your place: <kbd>Ctrl</kbd>+wheel zooms about the pointer, and the
+keys zoom about the middle of the view. SVG and Mermaid stay crisp at any
+magnification because they are re-laid out rather than upscaled.
+
+**Drag to move.** Hold the left button and drag to move around: anywhere on an
+image, a diagram or a picture, and on the blank space of a document. A drag
+that starts on text still selects that text, and clicking a link still follows
+it.
+
+How a document zooms depends on the style. In Light, Dark and GitHub it
+reflows: the text re-wraps to fit the window. In **GitHub Ext** zoom magnifies
+instead: the page keeps the layout it has at 100% and grows as a whole, so
+zooming in makes it larger than the window and you drag to explore it, as you
+would a zoomed image. Gantt charts grow with it rather than being redrawn to
+fit.
 
 ### All shortcuts
 
