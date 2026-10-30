@@ -53,14 +53,19 @@ ZOOM_STEPS = (0.25, 0.33, 0.50, 0.67, 0.75, 0.90, 1.00,
 
 # Presentation styles. Each one is a full look: palette, syntax colours,
 # mermaid theme and type stack.
-STYLES = ("light", "dark", "github")
-STYLE_LABELS = {"light": "Light", "dark": "Dark", "github": "GitHub"}
-STYLE_BG = {"light": "#fcfcfd", "dark": "#0d1117", "github": "#ffffff"}
+STYLES = ("light", "dark", "github", "github-ext")
+STYLE_LABELS = {"light": "Light", "dark": "Dark", "github": "GitHub",
+                "github-ext": "GitHub Ext"}
+STYLE_BG = {"light": "#fcfcfd", "dark": "#0d1117", "github": "#ffffff",
+            "github-ext": "#ffffff"}
+# GitHub's look, with tables allowed to grow past the text column.
+DEFAULT_STYLE = "github-ext"
 # Pygments styles, in order of preference per look.
 STYLE_PYGMENTS = {
     "light": ("friendly", "default"),
     "dark": ("github-dark", "monokai", "native"),
     "github": ("github-light", "default"),
+    "github-ext": ("github-light", "default"),
 }
 
 # Body typeface. "system" keeps whatever the chosen style specifies.
@@ -116,39 +121,20 @@ def save_prefs(prefs: dict) -> None:
         pass  # preferences are a convenience, never a failure mode
 
 
-def system_theme() -> str:
-    """Best-effort OS dark/light detection."""
-    if sys.platform == "win32":
-        try:
-            import winreg
-            key = winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize",
-            )
-            with key:
-                value, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
-            return "light" if value else "dark"
-        except Exception:
-            return "light"
-    if sys.platform == "darwin":
-        try:
-            import subprocess
-            out = subprocess.run(
-                ["defaults", "read", "-g", "AppleInterfaceStyle"],
-                capture_output=True, text=True, timeout=2,
-            ).stdout
-            return "dark" if "Dark" in out else "light"
-        except Exception:
-            return "light"
-    return "light"
-
-
 def resolve_style(requested: str | None, prefs: dict) -> str:
-    """Pick a style: explicit flag, then the remembered one, then the OS."""
-    for candidate in (requested, prefs.get("style"), prefs.get("theme")):
-        if candidate in STYLES:
-            return candidate
-    return "dark" if system_theme() == "dark" else "light"
+    """Pick a style: explicit flag, then the remembered one, then the default.
+
+    A remembered style only counts once it was chosen while DEFAULT_STYLE was
+    the default: prefs saved by an older version are moved onto the new
+    default once, and any choice made after that sticks.
+    """
+    if requested in STYLES:
+        return requested
+    if prefs.get("style_default") == DEFAULT_STYLE:
+        for candidate in (prefs.get("style"), prefs.get("theme")):
+            if candidate in STYLES:
+                return candidate
+    return DEFAULT_STYLE
 
 
 # --------------------------------------------------------------------------- #
@@ -388,8 +374,9 @@ BASE_CSS = r"""
   --body-size: 15px; --body-leading: 1.6; --measure: 60rem;
 }
 
-/* ---------- GitHub: faithful to github.com's rendered markdown ---------- */
-:root[data-style="github"] {
+/* ---------- GitHub: faithful to github.com's rendered markdown ----------
+   github-ext shares the palette; it only changes how wide tables may get. */
+:root[data-style="github"], :root[data-style="github-ext"] {
   --bg: #ffffff; --fg: #1f2328; --fg-muted: #59636e; --fg-faint: #818b98;
   --border: #d1d9e0; --border-soft: #d1d9e0; --accent: #0969da;
   --code-bg: #f6f8fa; --quote-border: #d1d9e0; --mark: #fff8c5;
@@ -506,6 +493,10 @@ button.tb svg { width: 15px; height: 15px; fill: none; stroke: currentColor;
 .menu .swatch.s-light  { background: linear-gradient(135deg, #fcfcfd 50%, #3b6fd4 50%); }
 .menu .swatch.s-dark   { background: linear-gradient(135deg, #0d1117 50%, #4493f8 50%); }
 .menu .swatch.s-github { background: linear-gradient(135deg, #ffffff 50%, #0969da 50%); }
+.menu .swatch.s-github-ext {
+  background: linear-gradient(135deg, #ffffff 50%, #0969da 50%);
+  box-shadow: inset 0 0 0 2px #0969da;
+}
 .menu hr { height: 1px; border: 0; background: var(--bar-border); margin: 4px 2px; }
 
 /* ---------- sidebar ---------- */
@@ -669,6 +660,25 @@ body.single-tab #tabs { display: none; }
 #content { zoom: 1; }
 body.mode-doc #content { max-width: var(--measure); margin: 0 auto; padding: 30px 40px 60vh; }
 body.mode-doc.wide #content { max-width: none; }
+
+/* ---------- github-ext: text keeps its measure, tables do not ----------
+   The column itself goes full width; every block is held back to the usual
+   measure and centred, so text reads exactly as before. Top-level tables are
+   exempt: they take the width they need, up to the whole window, and centre
+   on the column. A table narrower than the column still lines up with the
+   text, because min-width keeps its box as wide as the column. */
+:root[data-style="github-ext"] body.mode-doc:not(.is-csv) #content {
+  --column: min(100%, calc(var(--measure) - 80px));
+  max-width: none;
+}
+:root[data-style="github-ext"] body.mode-doc:not(.is-csv) #content > * {
+  max-width: var(--column);
+  margin-left: auto; margin-right: auto;
+}
+:root[data-style="github-ext"] body.mode-doc:not(.is-csv) #content > table {
+  width: max-content; min-width: var(--column); max-width: 100%;
+}
+:root[data-style="github-ext"] body.mode-doc.wide #content > * { max-width: none; }
 
 #content > :first-child { margin-top: 0; }
 h1, h2, h3, h4, h5, h6 { margin: 1.6em 0 .6em; line-height: 1.28; font-weight: 600; }
@@ -1126,7 +1136,7 @@ VIEWER_JS = r"""
     }
     if (!ctrl && !e.altKey && !typing) {
       if (e.key === "f") { e.preventDefault(); doFit(); return; }
-      // 1/2/3 pick a style directly; they also label the menu rows.
+      // 1-4 pick a style directly; they also label the menu rows.
       if (e.key >= "1" && e.key <= String(STYLES.length)) {
         e.preventDefault();
         var picked = STYLES[parseInt(e.key, 10) - 1];
@@ -1685,9 +1695,10 @@ VIEWER_JS = r"""
   /* style menu                                                         */
   /* ------------------------------------------------------------------ */
 
-  var STYLES = CFG.styles || ["light", "dark", "github"];
+  var STYLES = CFG.styles || ["light", "dark", "github", "github-ext"];
   var FONTS = CFG.fonts || ["system", "sans", "serif", "mono"];
-  var MERMAID_THEME = { light: "neutral", dark: "dark", github: "default" };
+  var MERMAID_THEME = { light: "neutral", dark: "dark", github: "default",
+                        "github-ext": "default" };
 
   function currentStyle() {
     return document.documentElement.dataset.style || STYLES[0];
@@ -2722,7 +2733,7 @@ def render_welcome(style: str, tabs: list[dict] | None = None,
     <kbd class="hint">F</kbd> fit &nbsp;&middot;&nbsp;
     <kbd class="hint">Ctrl</kbd>+<kbd class="hint">T</kbd> new tab &nbsp;&middot;&nbsp;
     <kbd class="hint">1</kbd> light <kbd class="hint">2</kbd> dark
-    <kbd class="hint">3</kbd> github
+    <kbd class="hint">3</kbd> github <kbd class="hint">4</kbd> github-ext
   </div>
 </div></div>"""
     return build_page(
@@ -3231,7 +3242,8 @@ class Viewer:
 
     def _persist(self) -> None:
         self.prefs.update({
-            "style": self.style, "zoom": round(self.zoom, 4), "fit": self.fit,
+            "style": self.style, "style_default": DEFAULT_STYLE,
+            "zoom": round(self.zoom, 4), "fit": self.fit,
             "font": self.font, "csv_align": self.csv_align,
             "sidebar": self.sidebar_visible, "sidebar_width": self.sidebar_width,
             "docs_height": self.docs_height, "panes": self.panes,
@@ -3778,7 +3790,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Shortcuts: Ctrl++/Ctrl+- zoom, Ctrl+0 reset, F fit, W wide, "
             "F5 reload, Ctrl+F find, Ctrl+O open, Ctrl+B sidebar, "
-            "Ctrl+D cycles style (or 1/2/3), "
+            "Ctrl+D cycles style (or 1-4), "
             "[ back, F11 fullscreen."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -3787,13 +3799,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--zoom", type=float, metavar="F", help="initial zoom factor, e.g. 1.25")
     look = p.add_mutually_exclusive_group()
     look.add_argument("--style", choices=STYLES, dest="style",
-                      help="presentation style (default: remembered, else follows the OS)")
+                      help="presentation style (default: remembered, else github-ext)")
     look.add_argument("--dark", action="store_const", const="dark", dest="style",
                       help="shorthand for --style dark")
     look.add_argument("--light", action="store_const", const="light", dest="style",
                       help="shorthand for --style light")
     look.add_argument("--github", action="store_const", const="github", dest="style",
                       help="shorthand for --style github")
+    look.add_argument("--github-ext", action="store_const", const="github-ext",
+                      dest="style", help="shorthand for --style github-ext")
     p.add_argument("--font", choices=FONTS, dest="font",
                    help="body typeface (default: remembered, else the style's own)")
     p.add_argument("--no-watch", action="store_true",

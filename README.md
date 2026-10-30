@@ -50,7 +50,7 @@ alongside the script. Everything else works with no network at all.
 md-view.py report.md            # open a document
 md-view.py a.md b.md sketch.mmd # each file gets a tab
 md-view.py diagram.svg --dark
-md-view.py --style github notes.md
+md-view.py --style github notes.md   # or --github-ext, --light, --dark
 ```
 
 ### Tabs and single instance
@@ -121,18 +121,23 @@ this off.
 
 ### Styles
 
-Three complete looks, each with its own palette, syntax-highlighting theme and
-mermaid theme. Pick one from the toolbar's style menu, cycle with
-<kbd>Ctrl</kbd>+<kbd>D</kbd>, or press <kbd>1</kbd> / <kbd>2</kbd> /
-<kbd>3</kbd>:
+Four looks, each with its own palette, syntax-highlighting theme and mermaid
+theme. Pick one from the toolbar's style menu, cycle with
+<kbd>Ctrl</kbd>+<kbd>D</kbd>, or press <kbd>1</kbd> to <kbd>4</kbd>:
 
 - **Light** — neutral slate, quiet heading rules, roomy line height
 - **Dark** — low-light palette
 - **GitHub** — faithful to github.com's rendered Markdown
+- **GitHub Ext** (the default) — GitHub's look, but wide tables are shown in
+  full. Text keeps its comfortable reading width; a table that does not fit
+  that column grows past it, centred, up to the width of the window, and only
+  scrolls sideways if it is wider than the whole window. Tables that already
+  fit stay aligned with the text.
 
 The choice is remembered, along with your zoom level, in
 `%LOCALAPPDATA%\md-view\prefs.json`. Without a saved preference the viewer
-follows the OS light/dark setting.
+starts in GitHub Ext. Preferences saved before GitHub Ext existed are moved to
+it once; pick another style afterwards and that choice sticks.
 
 ### Delimited files
 
