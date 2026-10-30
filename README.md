@@ -132,7 +132,10 @@ theme. Pick one from the toolbar's style menu, cycle with
   full. Text keeps its comfortable reading width; a table that does not fit
   that column grows past it, centred, up to the width of the window, and only
   scrolls sideways if it is wider than the whole window. Tables that already
-  fit stay aligned with the text.
+  fit stay aligned with the text. Mermaid diagrams get the same treatment:
+  they are drawn at their natural size rather than shrunk into the column,
+  and Gantt charts stretch across the whole window, with larger labels, and
+  redraw when the window or sidebar changes width.
 
 The choice is remembered, along with your zoom level, in
 `%LOCALAPPDATA%\md-view\prefs.json`. Without a saved preference the viewer
