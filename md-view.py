@@ -751,6 +751,19 @@ body.mode-mermaid #content {
 body.mode-mermaid .mermaid-figure { margin: 0; }
 body.mode-mermaid pre.mermaid svg { max-width: none; }
 
+/* github-ext: a diagram gets the whole window, not the text column.
+   The figure is a full-width block rather than a shrink-to-fit flex item:
+   mermaid sizes a gantt chart to its container, so a shrunken container drew
+   it a couple of hundred pixels wide. Other diagrams keep their natural size
+   and scroll only when they are wider than the window. */
+:root[data-style="github-ext"] body.mode-doc:not(.is-csv) #content > .mermaid-figure {
+  max-width: 100%;
+}
+:root[data-style="github-ext"] .mermaid-figure { display: block; min-width: 0; }
+:root[data-style="github-ext"] pre.mermaid { width: 100%; }
+:root[data-style="github-ext"] pre.mermaid svg { max-width: none; overflow: visible; }
+:root[data-style="github-ext"] body.mode-mermaid #content { justify-items: stretch; }
+
 /* ---------- image canvas ---------- */
 body.mode-image { background: var(--canvas); }
 body.mode-image #scroller {
@@ -1850,12 +1863,53 @@ VIEWER_JS = r"""
         maxTextSize: 500000,
         flowchart: { useMaxWidth: false },
         sequence: { useMaxWidth: false },
-        gantt: { useMaxWidth: false }
+        gantt: ganttConfig(styleName, nodes)
       });
       window.mermaid.run({ nodes: nodes, suppressErrors: true });
     } catch (err) {
       console.error("mermaid", err);
     }
+  }
+
+  /* Gantt layout. Mermaid's defaults everywhere except github-ext, which
+     also gets larger type and a left gutter wide enough for the longest
+     section title (mermaid never wraps those, so they ran into the bars).
+     Every value is given explicitly so switching back restores the defaults. */
+  var GANTT_RE = /(^|\n)\s*gantt\b/;
+  function ganttConfig(styleName, nodes) {
+    if (styleName !== "github-ext") {
+      return { useMaxWidth: false, fontSize: 11, sectionFontSize: 11,
+               barHeight: 20, leftPadding: 75 };
+    }
+    var longest = 0;
+    Array.prototype.forEach.call(nodes, function (n) {
+      (n.dataset.src || "").split("\n").forEach(function (line) {
+        var m = /^\s*section\s+(.+?)\s*$/i.exec(line);
+        if (m && m[1].length > longest) longest = m[1].length;
+      });
+    });
+    return { useMaxWidth: false, fontSize: 13, sectionFontSize: 13, barHeight: 22,
+             leftPadding: Math.max(75, Math.min(320, Math.round(longest * 7.5) + 24)) };
+  }
+
+  /* A gantt chart is drawn at the width of its container, once. In github-ext
+     that container is the window, so redraw when the window or the sidebar
+     changes its width. */
+  if (window.ResizeObserver && content) {
+    var ganttWidth = 0, ganttTimer = null;
+    new ResizeObserver(function () {
+      var w = content.clientWidth;
+      if (!ganttWidth) { ganttWidth = w; return; }
+      if (Math.abs(w - ganttWidth) < 2) return;
+      ganttWidth = w;
+      if (currentStyle() !== "github-ext" || typeof window.mermaid === "undefined") return;
+      var hasGantt = Array.prototype.some.call(
+        document.querySelectorAll("pre.mermaid"),
+        function (n) { return GANTT_RE.test(n.dataset.src || ""); });
+      if (!hasGantt) return;
+      clearTimeout(ganttTimer);
+      ganttTimer = setTimeout(function () { renderMermaid(currentStyle()); }, 200);
+    }).observe(content);
   }
 
   function escapeHtml(s) {
