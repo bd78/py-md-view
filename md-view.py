@@ -2999,6 +2999,31 @@ def render_error(title: str, message: str, style: str,
 # The application
 # --------------------------------------------------------------------------- #
 
+def _drop_stale_bridge_replies() -> None:
+    """Silence pywebview's error for a bridge reply whose page is gone.
+
+    Most bridge calls change what is on screen -- open, switch or close a tab --
+    so they end in ``load_url``. pywebview then hands back the call's return
+    value through a callback on the page that made the call, but only after
+    waiting for the *new* page to load, which never registered that callback.
+    Each such call therefore raised ``JavascriptException`` in a worker thread
+    and printed a traceback. Nothing is lost by dropping it: the page that
+    wanted the reply is gone, and ``call()`` in the page ignores replies
+    anyway. Every other thread exception goes to the previous hook.
+    """
+    previous = threading.excepthook
+
+    def hook(args: threading.ExceptHookArgs) -> None:
+        exc = args.exc_value
+        # Matched by name: webview is imported lazily, not at module level.
+        if (type(exc).__name__ == "JavascriptException"
+                and "_returnValuesCallbacks" in str(exc)):
+            return
+        previous(args)
+
+    threading.excepthook = hook
+
+
 class Tab:
     """One open document, with its own history and scroll position."""
 
@@ -3463,6 +3488,7 @@ class Viewer:
             if self.watch_enabled:
                 threading.Thread(target=self._watch_loop, daemon=True).start()
 
+        _drop_stale_bridge_replies()
         try:
             # Private mode keeps each process on its own ephemeral profile, so
             # a second launch never contends for a shared WebView2 user-data
