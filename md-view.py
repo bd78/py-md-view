@@ -9,6 +9,8 @@ Usage:
     md-view.py diagram.svg
     md-view.py --register          # associate .md / .mmd with this viewer (Windows)
     md-view.py --fetch-assets      # pre-download mermaid.js for offline use
+
+Author: bd78 (https://github.com/bd78)
 """
 
 from __future__ import annotations

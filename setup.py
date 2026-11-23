@@ -5,6 +5,8 @@ Typical use:
     python setup.py develop_local     # install deps into the current interpreter
     python setup.py fetch_assets      # cache mermaid.js for offline diagrams
     pip install .                     # regular install (adds md-view.py to Scripts)
+
+Author: bd78 (https://github.com/bd78)
 """
 
 from __future__ import annotations
