@@ -16,6 +16,7 @@ Author: bd78 (https://github.com/bd78)
 from __future__ import annotations
 
 import argparse
+import errno
 import functools
 import html
 import json
@@ -3910,9 +3911,17 @@ def instance_lock():
             import fcntl
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         return handle
-    except OSError:
+    except OSError as exc:
         handle.close()
-        return None
+        # Only "someone else holds it" means another viewer owns the window.
+        # msvcrt reports that as EACCES (EDEADLOCK from the blocking form).
+        if isinstance(exc, BlockingIOError) or (
+                sys.platform == "win32" and exc.errno in (errno.EACCES, errno.EDEADLK)):
+            return None
+        # Any other failure (ENOLCK, ...) would make every launch wait for an
+        # owner that never comes; open a window without the lock instead.
+        print(f"{APP_NAME}: cannot take the instance lock ({exc})", file=sys.stderr)
+        return True
 
 
 def hand_off(paths: list[Path], timeout: float = 2.0) -> bool:
@@ -4260,6 +4269,10 @@ def main(argv: list[str] | None = None) -> int:
         except OSError as exc:
             # Without a listener we simply lose single-instance behaviour.
             print(f"{APP_NAME}: single-instance listener unavailable ({exc})", file=sys.stderr)
+            # Nobody can reach this window, so do not keep later launches waiting for it.
+            if hasattr(owner, "close"):
+                owner.close()
+            owner = None
     viewer.run()
     return 0
 
