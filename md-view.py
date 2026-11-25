@@ -4143,7 +4143,12 @@ def main(argv: list[str] | None = None) -> int:
             return kind == "markdown" and "mermaid" in read_text(p).lower()
 
         if any(wants_mermaid(p) for p in paths):
-            fetch_mermaid(timeout=30)
+            # In the background: on a network that drops the CDN this would hold
+            # the window back for the whole timeout, on every launch. This
+            # launch loads mermaid from the CDN instead (see build_page); the
+            # cached copy serves the next one.
+            threading.Thread(target=fetch_mermaid, kwargs={"timeout": 30, "quiet": True},
+                             daemon=True).start()
 
     # pywebview takes a few hundred milliseconds to import (it loads the .NET
     # bridge on Windows). Pull markdown and pygments in alongside it, so the
