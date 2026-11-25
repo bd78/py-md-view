@@ -1888,7 +1888,8 @@ VIEWER_JS = r"""
         target.scrollIntoView();
         // Move the focus point too, as native fragment navigation does, so the
         // next Tab continues from the destination (a footnote's return link).
-        if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+        // Only for targets that are not focusable already: a link keeps its Tab stop.
+        if (target.tabIndex < 0 && !target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
         target.focus({ preventScroll: true });
       }
       return;
