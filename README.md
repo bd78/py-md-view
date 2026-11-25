@@ -81,7 +81,7 @@ and a file changed on disk shows the same dot as its tab. Each document carries
 a × on its right to close it, mirroring the tab strip.
 
 **Computer** — browse for something to open. Clicking a file opens it in a new
-tab; anything md-view cannot display is handed to the OS. The roots are the
+tab. The roots are the
 folder your documents were opened from, then Home, Desktop, Documents, Downloads
 and the drives.
 
@@ -244,7 +244,10 @@ fit.
 
 Links to other local documents open in the current tab with working back and
 forward; `http(s)` links go to your normal browser; anything md-view cannot
-display is handed to the OS.
+display is handed to the OS, after asking you first.
+
+Scripts inside a document never run: the page only executes md-view's own
+code, so a Markdown file cannot reach the viewer or start a program.
 
 ## File associations (Windows)
 
