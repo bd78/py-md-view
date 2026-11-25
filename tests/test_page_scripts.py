@@ -144,3 +144,11 @@ def test_document_path_cannot_close_the_config_script(mdv):
     assert config["findQuery"] == "</script>"
     assert hostile in json.dumps(config["docsTree"], ensure_ascii=False)   # value intact
     assert "\\u003c/script\\u003e" in page[start:]
+
+
+def test_hash_links_never_fall_through_to_the_browser(mdv):
+    # <base> makes a bare "#x" (even one written as &#35;x) point at the folder,
+    # so the click handler must cancel it and scroll in page itself.
+    handler = mdv.VIEWER_JS.split('addEventListener("click", function (e) {\n    var a = e.target.closest', 1)[1]
+    handler = handler.split("});", 1)[0]
+    assert handler.index("e.preventDefault()") < handler.index('charAt(0) === "#"')
