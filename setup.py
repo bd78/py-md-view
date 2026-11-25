@@ -32,7 +32,10 @@ def version() -> str:
 
 def requirements() -> list[str]:
     """requirements.txt is the one dependency list; its platform markers carry over."""
-    return [line.strip() for line in read("requirements.txt").splitlines()
+    # read_text raises if the file is missing (e.g. absent from an sdist) instead of
+    # silently producing install_requires=[].
+    text = (HERE / "requirements.txt").read_text("utf-8")
+    return [line.strip() for line in text.splitlines()
             if line.strip() and not line.lstrip().startswith("#")]
 
 
