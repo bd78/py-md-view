@@ -1881,8 +1881,16 @@ VIEWER_JS = r"""
       // leave the viewer for that folder.
       var id = href.slice(1), target = null;
       try { id = decodeURIComponent(id); } catch (err) { /* keep it raw */ }
-      if (id) target = document.getElementById(id);
-      if (target) target.scrollIntoView();
+      if (id) target = document.getElementById(id) ||
+        Array.prototype.find.call(document.getElementsByName(id),
+                                  function (n) { return n.tagName === "A"; });
+      if (target) {
+        target.scrollIntoView();
+        // Move the focus point too, as native fragment navigation does, so the
+        // next Tab continues from the destination (a footnote's return link).
+        if (!target.hasAttribute("tabindex")) target.setAttribute("tabindex", "-1");
+        target.focus({ preventScroll: true });
+      }
       return;
     }
     if (/^(https?|ftp|mailto):/i.test(href)) { call("open_external", href); }
