@@ -40,7 +40,9 @@ Python 3.12+ no longer include. Either `pip install setuptools` first, or just
 use the `md-view.py` flags above; they are the same code paths.
 
 Mermaid rendering needs `mermaid.min.js` (~3.5 MB). It is downloaded on first
-use and cached in `%LOCALAPPDATA%\md-view\assets\`. Fetch it ahead of time with
+use and cached in `%LOCALAPPDATA%\md-view\assets\`. The version is pinned
+(`MERMAID_VERSION` in `md-view.py`) and the download is rejected unless its
+SHA-256 matches `MERMAID_SHA256`. Fetch it ahead of time with
 `--fetch-assets`, or drop your own copy in `./assets/mermaid.min.js` to ship it
 alongside the script. Everything else works with no network at all.
 
