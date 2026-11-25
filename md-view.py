@@ -49,7 +49,11 @@ TEXT_EXTS = {".txt", ".text", ".log", ".rst", ".json", ".yml", ".yaml", ".toml",
 IMAGE_EXTS = RASTER_EXTS | SVG_EXTS
 VIEWABLE_EXTS = MARKDOWN_EXTS | MERMAID_EXTS | IMAGE_EXTS | CSV_EXTS | TEXT_EXTS
 
-MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"
+# Pinned and checked: this script runs in a page that can call into Python.
+# To upgrade, change both values (sha256 of dist/mermaid.min.js, as served).
+MERMAID_VERSION = "11.17.2"
+MERMAID_SHA256 = "581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8"
+MERMAID_CDN = f"https://cdn.jsdelivr.net/npm/mermaid@{MERMAID_VERSION}/dist/mermaid.min.js"
 
 ZOOM_STEPS = (0.25, 0.33, 0.50, 0.67, 0.75, 0.90, 1.00,
               1.10, 1.25, 1.50, 1.75, 2.00, 2.50, 3.00, 4.00, 5.00)
@@ -150,9 +154,29 @@ def vendored_mermaid() -> Path | None:
     return local if local.is_file() and local.stat().st_size > 100_000 else None
 
 
+def _mermaid_ok(data: bytes) -> bool:
+    import hashlib
+    return hashlib.sha256(data).hexdigest() == MERMAID_SHA256
+
+
 def cached_mermaid() -> Path | None:
-    p = assets_dir() / "mermaid.min.js"
-    return p if p.is_file() and p.stat().st_size > 100_000 else None
+    """The verified download. Named by version, so an older, unchecked cache never counts."""
+    p = assets_dir() / f"mermaid-{MERMAID_VERSION}.min.js"
+    try:
+        if p.is_file() and _mermaid_ok(p.read_bytes()):
+            return p
+    except OSError:
+        pass
+    # Adopt a cache from before pinning when it is exactly this release, so an
+    # offline machine keeps its diagrams.
+    legacy = assets_dir() / "mermaid.min.js"
+    try:
+        if legacy.is_file() and _mermaid_ok(legacy.read_bytes()):
+            legacy.replace(p)
+            return p
+    except OSError:
+        pass
+    return None
 
 
 def find_mermaid() -> Path | None:
@@ -168,7 +192,7 @@ def fetch_mermaid(force: bool = False, timeout: int = 60, quiet: bool = False) -
     import urllib.error
     import urllib.request
 
-    target = assets_dir() / "mermaid.min.js"
+    target = assets_dir() / f"mermaid-{MERMAID_VERSION}.min.js"
     tmp = target.with_suffix(".part")
     try:
         if not quiet:
@@ -176,8 +200,8 @@ def fetch_mermaid(force: bool = False, timeout: int = 60, quiet: bool = False) -
         req = urllib.request.Request(MERMAID_CDN, headers={"User-Agent": f"{APP_NAME}/{__version__}"})
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = resp.read()
-        if len(data) < 100_000:
-            raise ValueError(f"suspiciously small payload ({len(data)} bytes)")
+        if not _mermaid_ok(data):
+            raise ValueError(f"checksum mismatch for mermaid {MERMAID_VERSION}")
         tmp.write_bytes(data)
         tmp.replace(target)
         if not quiet:
@@ -2360,13 +2384,17 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
     mermaid_tag = ""
     if with_mermaid:
         path = find_mermaid()
+        integrity = ""
         if path:
             src = path.as_uri()
         else:
             src = MERMAID_CDN  # last resort; works only if the machine is online
+            import base64
+            digest = base64.b64encode(bytes.fromhex(MERMAID_SHA256)).decode()
+            integrity = f' integrity="sha256-{digest}" crossorigin="anonymous"'
         # The second script runs once the first has loaded or failed.
         mermaid_tag = (
-            f'<script nonce="{nonce}" src="{html.escape(src, quote=True)}"></script>'
+            f'<script nonce="{nonce}" src="{html.escape(src, quote=True)}"{integrity}></script>'
             f'<script nonce="{nonce}">__mdv_mermaidReady()</script>'
         )
 
