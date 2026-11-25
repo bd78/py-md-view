@@ -286,8 +286,6 @@ from there. The directory is removed on exit.
 
 - Diagrams need the cached `mermaid.min.js`; without it md-view says so in
   place of the diagram and shows the source instead.
-- The web view offers no find-in-page UI, so <kbd>Ctrl</kbd>+<kbd>F</kbd> does
-  nothing.
 - `--register` is Windows-only. On Linux, install a `.desktop` file; on macOS,
   wrap the script in a small app bundle.
 - No editing. That is the point.
