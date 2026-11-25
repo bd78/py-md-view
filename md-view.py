@@ -206,6 +206,7 @@ MERMAID_FENCE = re.compile(
     r"(?:\{[ ]*\.?)?(?P<lang>mermaid)\b[^\n]*$",
     re.IGNORECASE,
 )
+CODE_FENCE = re.compile(r"^[ ]{0,3}(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
 
 
 def _build_mermaid_extension(markdown_mod):
@@ -222,13 +223,28 @@ def _build_mermaid_extension(markdown_mod):
             out, i = [], 0
             while i < len(lines):
                 m = MERMAID_FENCE.match(lines[i])
-                if not m:
+                other = None if m else CODE_FENCE.match(lines[i])
+                if other and other.group("fence")[0] == "`" and "`" in other.group("info"):
+                    other = None    # ```inline``` code, not a fence
+                if not m and not other:
                     out.append(lines[i])
                     i += 1
                     continue
-                fence = m.group("fence")
-                indent = len(m.group("indent"))
+                fence = (m or other).group("fence")
                 close = re.compile(r"^[ ]{0,3}" + fence[0] + "{" + str(len(fence)) + r",}[ ]*$")
+                if other:
+                    # Any other code block is copied through untouched, so a
+                    # ```mermaid line inside it stays an example.
+                    out.append(lines[i])
+                    i += 1
+                    while i < len(lines) and not close.match(lines[i]):
+                        out.append(lines[i])
+                        i += 1
+                    if i < len(lines):
+                        out.append(lines[i])
+                        i += 1
+                    continue
+                indent = len(m.group("indent"))
                 body, i = [], i + 1
                 while i < len(lines) and not close.match(lines[i]):
                     body.append(lines[i][indent:] if lines[i][:indent].isspace() else lines[i])
