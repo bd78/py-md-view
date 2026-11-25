@@ -100,3 +100,25 @@ def test_tree_never_hands_files_to_the_os(mdv, tmp_path, monkeypatch):
             raise AssertionError(path)
 
     assert mdv.Viewer.open_from_tree(FakeViewer(), str(exe)) is False
+
+
+def test_macos_app_bundle_is_asked_about_not_opened(mdv, tmp_path, monkeypatch):
+    app = tmp_path / "Evil.app"
+    app.mkdir()
+    opened, asked = [], []
+    monkeypatch.setattr(mdv, "_os_open", opened.append)
+
+    class Window:
+        def create_confirmation_dialog(self, title, message):
+            asked.append(message)
+            return False                        # the reader says no
+
+    viewer = SimpleNamespace(current=None, _window=Window())
+
+    monkeypatch.setattr(mdv, "_IS_MAC", True)   # `open Evil.app` would launch it
+    assert mdv.Viewer.open_path(viewer, app.as_uri()) is False
+    assert asked and not opened
+
+    monkeypatch.setattr(mdv, "_IS_MAC", False)  # elsewhere a folder just opens
+    mdv.Viewer.open_path(viewer, app.as_uri())
+    assert opened == [app.resolve()]

@@ -2577,6 +2577,7 @@ TREE_MAX_DEPTH = 24
 
 _WIN_HIDDEN_ATTRS = 0x2 | 0x4   # FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM
 _IS_WINDOWS = sys.platform == "win32"
+_IS_MAC = sys.platform == "darwin"
 
 
 def _is_hidden(entry: os.DirEntry) -> bool:
@@ -3413,7 +3414,9 @@ class Viewer:
         path = _path_from_href(raw, base)
         if path is None:
             return False
-        if path.is_dir():
+        # On macOS a folder with an extension may be a bundle (.app, .prefPane)
+        # that `open` launches, so it is asked about below like a program.
+        if path.is_dir() and not (_IS_MAC and path.suffix):
             _os_open(path)
             return False
         if path.suffix.lower() in VIEWABLE_EXTS:
