@@ -206,6 +206,9 @@ MERMAID_FENCE = re.compile(
     r"(?:\{[ ]*\.?)?(?P<lang>mermaid)\b[^\n]*$",
     re.IGNORECASE,
 )
+CODE_FENCE = re.compile(r"^[ ]{0,3}(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
+# Raw HTML blocks whose content is verbatim until the closing tag (CommonMark types 1 and 2).
+RAW_HTML_OPEN = re.compile(r"^[ ]{0,3}<(?:(?P<tag>pre|script|style|textarea)\b|(?P<comment>!--))", re.IGNORECASE)
 
 
 def _build_mermaid_extension(markdown_mod):
@@ -219,16 +222,42 @@ def _build_mermaid_extension(markdown_mod):
 
     class MermaidPreprocessor(Preprocessor):
         def run(self, lines):
-            out, i = [], 0
+            out, i, raw_end = [], 0, None
             while i < len(lines):
                 m = MERMAID_FENCE.match(lines[i])
-                if not m:
+                if raw_end is None and not m:
+                    h = RAW_HTML_OPEN.match(lines[i])
+                    if h:
+                        raw_end = re.compile("-->" if h.group("comment") else "</" + h.group("tag") + r"\s*>", re.IGNORECASE)
+                if raw_end is not None:
+                    # A fence inside raw HTML is not a code block: copy through to the end tag.
+                    out.append(lines[i])
+                    if raw_end.search(lines[i]):
+                        raw_end = None
+                    i += 1
+                    continue
+                other = None if m else CODE_FENCE.match(lines[i])
+                if other and other.group("fence")[0] == "`" and "`" in other.group("info"):
+                    other = None    # ```inline``` code, not a fence
+                if not m and not other:
                     out.append(lines[i])
                     i += 1
                     continue
-                fence = m.group("fence")
-                indent = len(m.group("indent"))
+                fence = (m or other).group("fence")
                 close = re.compile(r"^[ ]{0,3}" + fence[0] + "{" + str(len(fence)) + r",}[ ]*$")
+                if other:
+                    # Any other code block is copied through untouched, so a
+                    # ```mermaid line inside it stays an example.
+                    out.append(lines[i])
+                    i += 1
+                    while i < len(lines) and not close.match(lines[i]):
+                        out.append(lines[i])
+                        i += 1
+                    if i < len(lines):
+                        out.append(lines[i])
+                        i += 1
+                    continue
+                indent = len(m.group("indent"))
                 body, i = [], i + 1
                 while i < len(lines) and not close.match(lines[i]):
                     body.append(lines[i][indent:] if lines[i][:indent].isspace() else lines[i])
