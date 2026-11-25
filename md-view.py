@@ -298,44 +298,6 @@ def render_markdown(text: str) -> tuple[str, str]:
 
 
 # --------------------------------------------------------------------------- #
-# Link / image rewriting so relative paths resolve from the temp HTML
-# --------------------------------------------------------------------------- #
-
-ATTR_URL = re.compile(
-    r'(?P<attr>\b(?:src|href|poster)\s*=\s*)(?P<q>["\'])(?P<url>[^"\']*)(?P=q)',
-    re.IGNORECASE,
-)
-ABSOLUTE_URL = re.compile(r"^(?:[a-z][a-z0-9+.-]*:|//|#|data:|mailto:)", re.IGNORECASE)
-
-
-def rewrite_urls(html_text: str, base: Path) -> str:
-    """Turn document-relative URLs into absolute file:// URLs.
-
-    The rendered HTML lives in a temp directory, so relative references would
-    otherwise dangle. Anchors and external schemes are left untouched.
-    """
-    from urllib.request import url2pathname
-
-    def sub(m):
-        url = m.group("url")
-        if not url or ABSOLUTE_URL.match(url):
-            return m.group(0)
-        frag = ""
-        if "#" in url:
-            url, frag = url.split("#", 1)
-            frag = "#" + frag
-        if not url:
-            return m.group(0)
-        try:
-            target = (base / url2pathname(url)).resolve()
-        except (OSError, ValueError):
-            return m.group(0)
-        return f'{m.group("attr")}{m.group("q")}{target.as_uri()}{frag}{m.group("q")}'
-
-    return ATTR_URL.sub(sub, html_text)
-
-
-# --------------------------------------------------------------------------- #
 # Stylesheet
 # --------------------------------------------------------------------------- #
 
@@ -2893,7 +2855,8 @@ def _parse_document(path: Path, *, csv_align: bool = False) -> dict:
     kind = classify(path)
 
     if kind == "markdown":
-        body = rewrite_urls(render_markdown(read_text(path))[0], path.parent)
+        # Relative src/href resolve through the page's <base>, set to path.parent.
+        body = render_markdown(read_text(path))[0]
         return {"body": body, "mode": "doc", "subtitle": "", "base": path.parent,
                 "with_mermaid": 'class="mermaid"' in body, "vector": False, "view_box": None}
 
