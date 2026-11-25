@@ -2337,6 +2337,9 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
         "sidebarWidth": width, "docsHeight": docs_h,
     }
     base_tag = f'<base href="{html.escape(base.as_uri() + "/", quote=True)}">' if base else ""
+    # "</" would end the <script> early (a find query can hold "</script>").
+    # Built here: f-string expressions may not contain "\" before Python 3.12.
+    cfg_json = json.dumps(cfg).replace("</", "<\\/")
 
     mermaid_tag = ""
     if with_mermaid:
@@ -2371,7 +2374,7 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
 {find_bar_html()}
 <div id="scroller"><div id="content">{body}</div></div>
 <div id="toast"></div>
-<script>window.__MDV__ = {json.dumps(cfg).replace("</", "<\\/")};</script>
+<script>window.__MDV__ = {cfg_json};</script>
 <script>{VIEWER_JS}</script>
 {mermaid_tag}
 </body>
