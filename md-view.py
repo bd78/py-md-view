@@ -2512,12 +2512,15 @@ def render_delimited(rows: list[list[str]], delimiter: str, *,
 
 def read_text(path: Path) -> str:
     data = path.read_bytes()
-    for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        # UTF-16 with a BOM: what Windows PowerShell 5 writes for "cmd > out.txt".
+        return data.decode("utf-16", errors="replace")
+    for encoding in ("utf-8-sig", "cp1252"):   # utf-8-sig also reads BOM-less UTF-8
         try:
             return data.decode(encoding)
         except UnicodeDecodeError:
             continue
-    return data.decode("utf-8", errors="replace")
+    return data.decode("latin-1")               # never fails: every byte is a character
 
 
 def human_size(n: int) -> str:
