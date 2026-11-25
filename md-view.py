@@ -16,6 +16,7 @@ Author: bd78 (https://github.com/bd78)
 from __future__ import annotations
 
 import argparse
+import errno
 import functools
 import html
 import json
@@ -230,6 +231,9 @@ MERMAID_FENCE = re.compile(
     r"(?:\{[ ]*\.?)?(?P<lang>mermaid)\b[^\n]*$",
     re.IGNORECASE,
 )
+CODE_FENCE = re.compile(r"^[ ]{0,3}(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
+# Raw HTML blocks whose content is verbatim until the closing tag (CommonMark types 1 and 2).
+RAW_HTML_OPEN = re.compile(r"^[ ]{0,3}<(?:(?P<tag>pre|script|style|textarea)\b|(?P<comment>!--))", re.IGNORECASE)
 
 
 def _build_mermaid_extension(markdown_mod):
@@ -243,16 +247,42 @@ def _build_mermaid_extension(markdown_mod):
 
     class MermaidPreprocessor(Preprocessor):
         def run(self, lines):
-            out, i = [], 0
+            out, i, raw_end = [], 0, None
             while i < len(lines):
                 m = MERMAID_FENCE.match(lines[i])
-                if not m:
+                if raw_end is None and not m:
+                    h = RAW_HTML_OPEN.match(lines[i])
+                    if h:
+                        raw_end = re.compile("-->" if h.group("comment") else "</" + h.group("tag") + r"\s*>", re.IGNORECASE)
+                if raw_end is not None:
+                    # A fence inside raw HTML is not a code block: copy through to the end tag.
+                    out.append(lines[i])
+                    if raw_end.search(lines[i]):
+                        raw_end = None
+                    i += 1
+                    continue
+                other = None if m else CODE_FENCE.match(lines[i])
+                if other and other.group("fence")[0] == "`" and "`" in other.group("info"):
+                    other = None    # ```inline``` code, not a fence
+                if not m and not other:
                     out.append(lines[i])
                     i += 1
                     continue
-                fence = m.group("fence")
-                indent = len(m.group("indent"))
+                fence = (m or other).group("fence")
                 close = re.compile(r"^[ ]{0,3}" + fence[0] + "{" + str(len(fence)) + r",}[ ]*$")
+                if other:
+                    # Any other code block is copied through untouched, so a
+                    # ```mermaid line inside it stays an example.
+                    out.append(lines[i])
+                    i += 1
+                    while i < len(lines) and not close.match(lines[i]):
+                        out.append(lines[i])
+                        i += 1
+                    if i < len(lines):
+                        out.append(lines[i])
+                        i += 1
+                    continue
+                indent = len(m.group("indent"))
                 body, i = [], i + 1
                 while i < len(lines) and not close.match(lines[i]):
                     body.append(lines[i][indent:] if lines[i][:indent].isspace() else lines[i])
@@ -324,44 +354,6 @@ def render_markdown(text: str) -> tuple[str, str]:
     # re-parsing the rest of the document or touching escaped code examples.
     body = RAW_META.sub('<meta http-equiv=""', body)
     return body, getattr(md, "toc", "")
-
-
-# --------------------------------------------------------------------------- #
-# Link / image rewriting so relative paths resolve from the temp HTML
-# --------------------------------------------------------------------------- #
-
-ATTR_URL = re.compile(
-    r'(?P<attr>\b(?:src|href|poster)\s*=\s*)(?P<q>["\'])(?P<url>[^"\']*)(?P=q)',
-    re.IGNORECASE,
-)
-ABSOLUTE_URL = re.compile(r"^(?:[a-z][a-z0-9+.-]*:|//|#|data:|mailto:)", re.IGNORECASE)
-
-
-def rewrite_urls(html_text: str, base: Path) -> str:
-    """Turn document-relative URLs into absolute file:// URLs.
-
-    The rendered HTML lives in a temp directory, so relative references would
-    otherwise dangle. Anchors and external schemes are left untouched.
-    """
-    from urllib.request import url2pathname
-
-    def sub(m):
-        url = m.group("url")
-        if not url or ABSOLUTE_URL.match(url):
-            return m.group(0)
-        frag = ""
-        if "#" in url:
-            url, frag = url.split("#", 1)
-            frag = "#" + frag
-        if not url:
-            return m.group(0)
-        try:
-            target = (base / url2pathname(url)).resolve()
-        except (OSError, ValueError):
-            return m.group(0)
-        return f'{m.group("attr")}{m.group("q")}{target.as_uri()}{frag}{m.group("q")}'
-
-    return ATTR_URL.sub(sub, html_text)
 
 
 # --------------------------------------------------------------------------- #
@@ -1908,8 +1900,16 @@ VIEWER_JS = r"""
     var a = e.target.closest && e.target.closest("a[href]");
     if (!a) return;
     var href = a.getAttribute("href") || "";
-    if (href.charAt(0) === "#") return;                     // in-page anchor
     e.preventDefault();
+    if (href.charAt(0) === "#") {
+      // <base> would resolve a bare "#x" to the document's folder and navigate there.
+      var id = href.slice(1), t = null;
+      try { id = decodeURIComponent(id); } catch (err) { /* keep the raw text */ }
+      if (id) t = document.getElementById(id) || document.getElementsByName(id)[0];
+      if (t) t.scrollIntoView();
+      else if (!id) scroller.scrollTop = 0;
+      return;
+    }
     if (/^(https?|ftp|mailto):/i.test(href)) { call("open_external", href); }
     else { call("open_path", a.href || href); }
   });
@@ -2055,6 +2055,7 @@ VIEWER_JS = r"""
       nodes.forEach(function (n) {
         if (n.dataset.failed) return;
         n.dataset.failed = "1";
+        call("mermaid_missing");
         n.innerHTML = '<span class="mdv-nomermaid">Mermaid renderer unavailable - run ' +
                       "<code>md-view.py --fetch-assets</code> while online to enable diagrams." +
                       "</span><br><br>" + escapeHtml(n.dataset.src || "");
@@ -2539,12 +2540,15 @@ def render_delimited(rows: list[list[str]], delimiter: str, *,
 
 def read_text(path: Path) -> str:
     data = path.read_bytes()
-    for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
+    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        # UTF-16 with a BOM: what Windows PowerShell 5 writes for "cmd > out.txt".
+        return data.decode("utf-16", errors="replace")
+    for encoding in ("utf-8-sig", "cp1252"):   # utf-8-sig also reads BOM-less UTF-8
         try:
             return data.decode(encoding)
         except UnicodeDecodeError:
             continue
-    return data.decode("utf-8", errors="replace")
+    return data.decode("latin-1")               # never fails: every byte is a character
 
 
 def human_size(n: int) -> str:
@@ -2940,7 +2944,8 @@ def _parse_document(path: Path, *, csv_align: bool = False) -> dict:
     kind = classify(path)
 
     if kind == "markdown":
-        body = rewrite_urls(render_markdown(read_text(path))[0], path.parent)
+        # Relative src/href resolve through the page's <base>, set to path.parent.
+        body = render_markdown(read_text(path))[0]
         return {"body": body, "mode": "doc", "subtitle": "", "base": path.parent,
                 "with_mermaid": 'class="mermaid"' in body, "vector": False, "view_box": None}
 
@@ -3144,6 +3149,11 @@ class Viewer:
         self._mtimes: dict[Path, float] = {}
         self._stale: set[Path] = set()
         self._capture_failures = 0
+        # Mermaid arrives in the background: the page that failed to get it from
+        # the CDN is repainted once, when the cache fills (or at once if it has).
+        self._mermaid_lock = threading.Lock()
+        self._mermaid_missing = False
+        self._mermaid_repainted = False
 
         # Sidebar state lives here, not in the page: every navigation rebuilds
         # the document, and expanded folders must survive that.
@@ -3441,6 +3451,26 @@ class Viewer:
     # F5 and the toolbar button both mean "rebuild this tab".
     reload = refresh
 
+    def mermaid_missing(self) -> None:
+        """The page found no mermaid.js. Repaint once the cache has it."""
+        with self._mermaid_lock:
+            if self._mermaid_repainted:
+                return
+            if find_mermaid() is None:
+                self._mermaid_missing = True
+                return
+            self._mermaid_repainted = True
+        self.refresh()
+
+    def mermaid_arrived(self) -> None:
+        """The background download finished: repaint only if a page needed it."""
+        with self._mermaid_lock:
+            if not (self._mermaid_missing and find_mermaid()) or self._mermaid_repainted:
+                return
+            self._mermaid_missing = False
+            self._mermaid_repainted = True
+        self.refresh()
+
     def open_path(self, raw: str, *, new_tab: bool = False) -> bool:
         """Open a link target: viewable files in-app, anything else via the OS."""
         base = self.current.parent if self.current else Path.cwd()
@@ -3690,6 +3720,9 @@ class Api:
 
     reload = refresh
 
+    def mermaid_missing(self):
+        self._viewer.mermaid_missing()
+
     def open_path(self, href: str):
         return self._viewer.open_path(href)
 
@@ -3882,17 +3915,20 @@ class InstanceServer:
                     if message.get("token") != self.token:
                         conn.sendall(b"denied")
                         continue
-                    opened = 0
-                    for item in message.get("paths") or []:
-                        path = Path(item)
-                        if path.exists():
+                    paths = [Path(item) for item in message.get("paths") or []]
+                    paths = [p for p in paths if p.exists()]
+                    # Answer before opening: opening can outlast the sender's
+                    # timeout, and a sender that gives up opens a second window.
+                    conn.sendall(b"ok" if paths else b"empty")
+                    for path in paths:
+                        try:
                             self.viewer.open_tab(path)
-                            opened += 1
-                    if opened:
+                        except OSError as exc:      # one bad file must not drop the rest
+                            print(f"{APP_NAME}: could not open {path}: {exc}", file=sys.stderr)
+                    if paths:
                         # Only a hand-off from another process brings the
                         # window forward; in-app opens leave it alone.
                         self.viewer._raise()
-                    conn.sendall(b"ok" if opened else b"empty")
                 except (OSError, ValueError, TypeError):
                     continue
 
@@ -3912,6 +3948,40 @@ class InstanceServer:
 
 def instance_file() -> Path:
     return data_dir() / "instance.json"
+
+
+def instance_lock():
+    """Take the per-user lock that marks the window owner; None if it is held.
+
+    Launches that start together (several files opened at once from Explorer)
+    would all find no running window; the lock lets exactly one become it.
+    The OS drops the lock when its process exits, so a crash never leaves it
+    stale. The returned handle must stay referenced while the window is open.
+    """
+    try:
+        handle = open(data_dir() / "instance.lock", "a+b")
+    except OSError:
+        return True     # no lock file possible: every launch may own a window, as before
+    try:
+        handle.seek(0)
+        if sys.platform == "win32":
+            import msvcrt
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return handle
+    except OSError as exc:
+        handle.close()
+        # Only "someone else holds it" means another viewer owns the window.
+        # msvcrt reports that as EACCES (EDEADLOCK from the blocking form).
+        if isinstance(exc, BlockingIOError) or (
+                sys.platform == "win32" and exc.errno in (errno.EACCES, errno.EDEADLK)):
+            return None
+        # Any other failure (ENOLCK, ...) would make every launch wait for an
+        # owner that never comes; open a window without the lock instead.
+        print(f"{APP_NAME}: cannot take the instance lock ({exc})", file=sys.stderr)
+        return True
 
 
 def hand_off(paths: list[Path], timeout: float = 2.0) -> bool:
@@ -4202,21 +4272,25 @@ def main(argv: list[str] | None = None) -> int:
 
     # A viewer already running? Give it the files as new tabs instead of
     # starting a second window -- this is the common case when documents are
-    # opened one after another from Explorer.
-    if paths and not args.new_window and hand_off(paths):
-        return 0
-
-    # Grab mermaid the first time it is actually needed, so the very first
-    # launch of a diagram is not silently broken.
-    if not args.no_mermaid and find_mermaid() is None:
-        def wants_mermaid(p: Path) -> bool:
-            kind = classify(p)
-            if kind == "mermaid":
-                return True
-            return kind == "markdown" and "mermaid" in read_text(p).lower()
-
-        if any(wants_mermaid(p) for p in paths):
-            fetch_mermaid(timeout=30)
+    # opened one after another from Explorer. When the owner is still starting
+    # up, keep trying until its listener answers; the lock is released if the owner
+    # dies, so the wait always ends, and giving up early would open a second window.
+    owner = None if args.new_window else instance_lock()
+    if paths and not args.new_window:
+        while True:
+            if hand_off(paths):
+                return 0
+            if owner is not None:
+                break
+            # A file deleted since the startup check would make the owner reply
+            # "empty" for ever; stop once none is left.
+            for gone in [p for p in paths if not p.exists()]:
+                print(f"{APP_NAME}: no such file: {gone}", file=sys.stderr)
+            paths = [p for p in paths if p.exists()]
+            if not paths:
+                return 1
+            time.sleep(0.2)
+            owner = instance_lock()     # the owner may have quit meanwhile
 
     # pywebview takes a few hundred milliseconds to import (it loads the .NET
     # bridge on Windows). Pull markdown and pygments in alongside it, so the
@@ -4237,12 +4311,36 @@ def main(argv: list[str] | None = None) -> int:
         paths, style=style, zoom=zoom, font=font,
         watch=not args.no_watch, mermaid=not args.no_mermaid, debug=args.debug,
     )
+    # Grab mermaid the first time it is actually needed, so the very first
+    # launch of a diagram is not silently broken.
+    if not args.no_mermaid and find_mermaid() is None:
+        def wants_mermaid(p: Path) -> bool:
+            kind = classify(p)
+            if kind == "mermaid":
+                return True
+            return kind == "markdown" and "mermaid" in read_text(p).lower()
+
+        if any(wants_mermaid(p) for p in paths):
+            # In the background: on a network that drops the CDN this would hold
+            # the window back for the whole timeout, on every launch. This
+            # launch loads mermaid from the CDN instead (see build_page); when
+            # the download lands, a page the CDN failed is repainted.
+            def fetch_then_repaint() -> None:
+                if fetch_mermaid(timeout=30, quiet=True):
+                    viewer.mermaid_arrived()
+
+            threading.Thread(target=fetch_then_repaint, daemon=True).start()
+
     if not args.new_window:
         try:
             viewer._server = InstanceServer(viewer)
         except OSError as exc:
             # Without a listener we simply lose single-instance behaviour.
             print(f"{APP_NAME}: single-instance listener unavailable ({exc})", file=sys.stderr)
+            # Nobody can reach this window, so do not keep later launches waiting for it.
+            if hasattr(owner, "close"):
+                owner.close()
+            owner = None
     viewer.run()
     return 0
 
