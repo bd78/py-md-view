@@ -2660,8 +2660,11 @@ def documents_anchor(doc_paths: list[Path]) -> Path | None:
         return Path(parents[0])       # spread across drives; anchor on the first
 
 
+# shortcut: built once per anchor, so a drive plugged in later shows up only
+# after a restart; upgrade to a refresh button if that is missed.
+@functools.cache
 def filesystem_roots(anchor: Path | None = None) -> list[dict]:
-    """Starting points for the computer tree.
+    """Starting points for the computer tree. Read-only: the list is shared.
 
     `anchor` is fixed for the session by the caller. It must not follow the
     documents around: recomputing it would reshape the tree whenever a file was
@@ -2671,13 +2674,13 @@ def filesystem_roots(anchor: Path | None = None) -> list[dict]:
     roots: list[dict] = []
     seen: set[str] = set()
 
-    def add(root_id: str, label: str, path: Path | None) -> None:
+    def add(root_id: str, label: str, path: Path | None, *, probe: bool = True) -> None:
         if path is None:
             return
         try:
-            if not path.is_dir():
+            if probe and not path.is_dir():
                 return
-            key = str(path.resolve()).lower()
+            key = str(path.resolve() if probe else path).lower()
         except OSError:
             return
         if key in seen:
@@ -2695,7 +2698,8 @@ def filesystem_roots(anchor: Path | None = None) -> list[dict]:
 
     if sys.platform == "win32":
         for letter in _windows_drives():
-            add(f"drive-{letter.lower()}", f"{letter}:\\", Path(f"{letter}:\\"))
+            # Not probed: a disconnected network drive blocks for the SMB timeout.
+            add(f"drive-{letter.lower()}", f"{letter}:\\", Path(f"{letter}:\\"), probe=False)
     else:
         add("root", "/", Path("/"))
     return roots
