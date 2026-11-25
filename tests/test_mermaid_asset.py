@@ -11,8 +11,7 @@ GOOD = b"/* mermaid */" * 10_000
 
 @pytest.fixture
 def cache(mdv, tmp_path, monkeypatch):
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    monkeypatch.setattr(mdv, "data_dir", lambda: tmp_path)
     monkeypatch.setattr(mdv, "MERMAID_SHA256", hashlib.sha256(GOOD).hexdigest())
     monkeypatch.setattr(mdv, "vendored_mermaid", lambda: None)
     return mdv.assets_dir()
@@ -49,3 +48,11 @@ def test_cdn_fallback_carries_the_hash(mdv, cache):
                           fit=False, scroll=0.0, base=None, can_go_back=False,
                           with_mermaid=True)
     assert 'integrity="sha256-' in page
+
+
+def test_tampered_versioned_cache_is_a_miss(mdv, cache):
+    p = cache / f"mermaid-{mdv.MERMAID_VERSION}.min.js"
+    p.write_bytes(GOOD)
+    assert mdv.find_mermaid() == p
+    p.write_bytes(GOOD + b"alert(1)")
+    assert mdv.find_mermaid() is None

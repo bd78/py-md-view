@@ -161,8 +161,11 @@ def _mermaid_ok(data: bytes) -> bool:
 def cached_mermaid() -> Path | None:
     """The verified download. Named by version, so an older, unchecked cache never counts."""
     p = assets_dir() / f"mermaid-{MERMAID_VERSION}.min.js"
-    if p.is_file():
-        return p
+    try:
+        if p.is_file() and _mermaid_ok(p.read_bytes()):
+            return p
+    except OSError:
+        pass
     # Adopt a cache from before pinning when it is exactly this release, so an
     # offline machine keeps its diagrams.
     legacy = assets_dir() / "mermaid.min.js"
