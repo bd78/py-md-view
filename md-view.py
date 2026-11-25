@@ -4156,14 +4156,14 @@ def main(argv: list[str] | None = None) -> int:
     # A viewer already running? Give it the files as new tabs instead of
     # starting a second window -- this is the common case when documents are
     # opened one after another from Explorer. When the owner is still starting
-    # up, keep trying until its listener answers.
+    # up, keep trying until its listener answers; the lock is released if the owner
+    # dies, so the wait always ends, and giving up early would open a second window.
     owner = None if args.new_window else instance_lock()
     if paths and not args.new_window:
-        deadline = time.monotonic() + 10
         while True:
             if hand_off(paths):
                 return 0
-            if owner is not None or time.monotonic() > deadline:
+            if owner is not None:
                 break
             time.sleep(0.2)
             owner = instance_lock()     # the owner may have quit meanwhile
