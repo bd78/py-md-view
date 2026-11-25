@@ -2351,9 +2351,6 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
     cfg_json = (json.dumps(cfg).replace("<", "\\u003c").replace(">", "\\u003e")
                 .replace("&", "\\u0026"))
     base_tag = f'<base href="{html.escape(base.as_uri() + "/", quote=True)}">' if base else ""
-    # "</" would end the <script> early (a find query can hold "</script>").
-    # Built here: f-string expressions may not contain "\" before Python 3.12.
-    cfg_json = json.dumps(cfg).replace("</", "<\\/")
     # Only scripts carrying this page's nonce run. A document's own <script>
     # or onerror= would otherwise reach window.pywebview.api.
     import secrets
