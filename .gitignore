@@ -9,3 +9,6 @@ dist/
 
 # mermaid.min.js is ~3.5 MB and fetched on demand
 assets/
+
+# graphify knowledge graph output, rebuilt locally
+graphify-out/
