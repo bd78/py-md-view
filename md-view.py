@@ -247,7 +247,7 @@ CODE_FENCE = re.compile(r"^[ ]{0,3}(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
 RAW_HTML_OPEN = re.compile(r"^[ ]{0,3}<(?:(?P<tag>pre|script|style|textarea)\b|(?P<comment>!--))", re.IGNORECASE)
 
 
-def _build_mermaid_extension(markdown_mod):
+def _build_mermaid_extension():
     """A preprocessor that lifts ```mermaid fences out before any other parsing.
 
     Doing it at preprocessor level keeps the diagram source pristine: no
@@ -347,7 +347,7 @@ def render_markdown(text: str) -> tuple[str, str]:
         "toc",
         "sane_lists",
         "admonition",
-        _build_mermaid_extension(markdown_mod),
+        _build_mermaid_extension(),
     ]
     extension_configs = {"toc": {"permalink": "", "toc_depth": "2-4"}}
 
@@ -1358,7 +1358,7 @@ VIEWER_JS = r"""
     if (e.key === "Escape") {
       if (anyMenuOpen()) { closeMenus(null); return; }
       if (findOpen()) { closeFind(); return; }
-      call("escape"); return;
+      return;
     }
     if (!ctrl && !e.altKey && !typing) {
       if (e.key === "f") { e.preventDefault(); doFit(); return; }
@@ -3464,9 +3464,6 @@ class Viewer:
                 invalidate_document(self.tab.path)
             self._paint()
 
-    # F5 and the toolbar button both mean "rebuild this tab".
-    reload = refresh
-
     def mermaid_missing(self) -> None:
         """The page found no mermaid.js. Repaint once the cache has it."""
         with self._mermaid_lock:
@@ -3735,8 +3732,6 @@ class Api:
     def refresh(self):
         self._viewer.refresh()
 
-    reload = refresh
-
     def mermaid_missing(self):
         self._viewer.mermaid_missing()
 
@@ -3843,16 +3838,9 @@ class Api:
         return self._viewer.reveal_current()
 
     # window
-    def close_window(self):
-        if self._window is not None:
-            self._window.destroy()
-
     def toggle_fullscreen(self):
         if self._window is not None:
             self._window.toggle_fullscreen()
-
-    def escape(self):
-        return None
 
     def set_find_query(self, query: str):
         """Remember the search text so a repaint can put it back."""
