@@ -2371,7 +2371,7 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
 {find_bar_html()}
 <div id="scroller"><div id="content">{body}</div></div>
 <div id="toast"></div>
-<script>window.__MDV__ = {json.dumps(cfg)};</script>
+<script>window.__MDV__ = {json.dumps(cfg).replace("</", "<\\/")};</script>
 <script>{VIEWER_JS}</script>
 {mermaid_tag}
 </body>
