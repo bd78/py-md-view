@@ -2031,6 +2031,7 @@ VIEWER_JS = r"""
       nodes.forEach(function (n) {
         if (n.dataset.failed) return;
         n.dataset.failed = "1";
+        call("mermaid_missing");
         n.innerHTML = '<span class="mdv-nomermaid">Mermaid renderer unavailable - run ' +
                       "<code>md-view.py --fetch-assets</code> while online to enable diagrams." +
                       "</span><br><br>" + escapeHtml(n.dataset.src || "");
@@ -3116,6 +3117,11 @@ class Viewer:
         self._mtimes: dict[Path, float] = {}
         self._stale: set[Path] = set()
         self._capture_failures = 0
+        # Mermaid arrives in the background: the page that failed to get it from
+        # the CDN is repainted once, when the cache fills (or at once if it has).
+        self._mermaid_lock = threading.Lock()
+        self._mermaid_missing = False
+        self._mermaid_repainted = False
 
         # Sidebar state lives here, not in the page: every navigation rebuilds
         # the document, and expanded folders must survive that.
@@ -3413,6 +3419,26 @@ class Viewer:
     # F5 and the toolbar button both mean "rebuild this tab".
     reload = refresh
 
+    def mermaid_missing(self) -> None:
+        """The page found no mermaid.js. Repaint once the cache has it."""
+        with self._mermaid_lock:
+            if self._mermaid_repainted:
+                return
+            if find_mermaid() is None:
+                self._mermaid_missing = True
+                return
+            self._mermaid_repainted = True
+        self.refresh()
+
+    def mermaid_arrived(self) -> None:
+        """The background download finished: repaint only if a page needed it."""
+        with self._mermaid_lock:
+            if not (self._mermaid_missing and find_mermaid()) or self._mermaid_repainted:
+                return
+            self._mermaid_missing = False
+            self._mermaid_repainted = True
+        self.refresh()
+
     def open_path(self, raw: str, *, new_tab: bool = False) -> bool:
         """Open a link target: viewable files in-app, anything else via the OS."""
         base = self.current.parent if self.current else Path.cwd()
@@ -3661,6 +3687,9 @@ class Api:
         self._viewer.refresh()
 
     reload = refresh
+
+    def mermaid_missing(self):
+        self._viewer.mermaid_missing()
 
     def open_path(self, href: str):
         return self._viewer.open_path(href)
@@ -4178,23 +4207,6 @@ def main(argv: list[str] | None = None) -> int:
     if paths and not args.new_window and hand_off(paths):
         return 0
 
-    # Grab mermaid the first time it is actually needed, so the very first
-    # launch of a diagram is not silently broken.
-    if not args.no_mermaid and find_mermaid() is None:
-        def wants_mermaid(p: Path) -> bool:
-            kind = classify(p)
-            if kind == "mermaid":
-                return True
-            return kind == "markdown" and "mermaid" in read_text(p).lower()
-
-        if any(wants_mermaid(p) for p in paths):
-            # In the background: on a network that drops the CDN this would hold
-            # the window back for the whole timeout, on every launch. This
-            # launch loads mermaid from the CDN instead (see build_page); the
-            # cached copy serves the next one.
-            threading.Thread(target=fetch_mermaid, kwargs={"timeout": 30, "quiet": True},
-                             daemon=True).start()
-
     # pywebview takes a few hundred milliseconds to import (it loads the .NET
     # bridge on Windows). Pull markdown and pygments in alongside it, so the
     # first document is ready to render the moment the window can show it.
@@ -4214,6 +4226,26 @@ def main(argv: list[str] | None = None) -> int:
         paths, style=style, zoom=zoom, font=font,
         watch=not args.no_watch, mermaid=not args.no_mermaid, debug=args.debug,
     )
+    # Grab mermaid the first time it is actually needed, so the very first
+    # launch of a diagram is not silently broken.
+    if not args.no_mermaid and find_mermaid() is None:
+        def wants_mermaid(p: Path) -> bool:
+            kind = classify(p)
+            if kind == "mermaid":
+                return True
+            return kind == "markdown" and "mermaid" in read_text(p).lower()
+
+        if any(wants_mermaid(p) for p in paths):
+            # In the background: on a network that drops the CDN this would hold
+            # the window back for the whole timeout, on every launch. This
+            # launch loads mermaid from the CDN instead (see build_page); when
+            # the download lands, a page the CDN failed is repainted.
+            def fetch_then_repaint() -> None:
+                if fetch_mermaid(timeout=30, quiet=True):
+                    viewer.mermaid_arrived()
+
+            threading.Thread(target=fetch_then_repaint, daemon=True).start()
+
     if not args.new_window:
         try:
             viewer._server = InstanceServer(viewer)
