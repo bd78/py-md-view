@@ -3809,17 +3809,17 @@ class InstanceServer:
                     if message.get("token") != self.token:
                         conn.sendall(b"denied")
                         continue
-                    opened = 0
-                    for item in message.get("paths") or []:
-                        path = Path(item)
-                        if path.exists():
-                            self.viewer.open_tab(path)
-                            opened += 1
-                    if opened:
+                    paths = [Path(item) for item in message.get("paths") or []]
+                    paths = [p for p in paths if p.exists()]
+                    # Answer before opening: opening can outlast the sender's
+                    # timeout, and a sender that gives up opens a second window.
+                    conn.sendall(b"ok" if paths else b"empty")
+                    for path in paths:
+                        self.viewer.open_tab(path)
+                    if paths:
                         # Only a hand-off from another process brings the
                         # window forward; in-app opens leave it alone.
                         self.viewer._raise()
-                    conn.sendall(b"ok" if opened else b"empty")
                 except (OSError, ValueError, TypeError):
                     continue
 
@@ -3839,6 +3839,32 @@ class InstanceServer:
 
 def instance_file() -> Path:
     return data_dir() / "instance.json"
+
+
+def instance_lock():
+    """Take the per-user lock that marks the window owner; None if it is held.
+
+    Launches that start together (several files opened at once from Explorer)
+    would all find no running window; the lock lets exactly one become it.
+    The OS drops the lock when its process exits, so a crash never leaves it
+    stale. The returned handle must stay referenced while the window is open.
+    """
+    try:
+        handle = open(data_dir() / "instance.lock", "a+b")
+    except OSError:
+        return True     # no lock file possible: every launch may own a window, as before
+    try:
+        handle.seek(0)
+        if sys.platform == "win32":
+            import msvcrt
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return handle
+    except OSError:
+        handle.close()
+        return None
 
 
 def hand_off(paths: list[Path], timeout: float = 2.0) -> bool:
@@ -4129,9 +4155,18 @@ def main(argv: list[str] | None = None) -> int:
 
     # A viewer already running? Give it the files as new tabs instead of
     # starting a second window -- this is the common case when documents are
-    # opened one after another from Explorer.
-    if paths and not args.new_window and hand_off(paths):
-        return 0
+    # opened one after another from Explorer. When the owner is still starting
+    # up, keep trying until its listener answers.
+    owner = None if args.new_window else instance_lock()
+    if paths and not args.new_window:
+        deadline = time.monotonic() + 10
+        while True:
+            if hand_off(paths):
+                return 0
+            if owner is not None or time.monotonic() > deadline:
+                break
+            time.sleep(0.2)
+            owner = instance_lock()     # the owner may have quit meanwhile
 
     # Grab mermaid the first time it is actually needed, so the very first
     # launch of a diagram is not silently broken.
