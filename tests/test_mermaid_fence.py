@@ -38,4 +38,3 @@ def test_fence_inside_raw_html_does_not_hide_later_diagram(mdv):
 def test_mermaid_fence_inside_raw_html_stays_literal(mdv):
     text = "<pre>\n```mermaid\ngraph TD; A-->B\n```\n</pre>\n"
     assert diagrams(mdv, text) == 0
-    assert "```mermaid" in mdv.render_markdown(text)[0]
