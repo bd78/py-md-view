@@ -1846,8 +1846,16 @@ VIEWER_JS = r"""
     var a = e.target.closest && e.target.closest("a[href]");
     if (!a) return;
     var href = a.getAttribute("href") || "";
-    if (href.charAt(0) === "#") return;                     // in-page anchor
     e.preventDefault();
+    if (href.charAt(0) === "#") {
+      // <base> would resolve a bare "#x" to the document's folder and navigate there.
+      var id = href.slice(1), t = null;
+      try { id = decodeURIComponent(id); } catch (err) { /* keep the raw text */ }
+      if (id) t = document.getElementById(id) || document.getElementsByName(id)[0];
+      if (t) t.scrollIntoView();
+      else if (!id) scroller.scrollTop = 0;
+      return;
+    }
     if (/^(https?|ftp|mailto):/i.test(href)) { call("open_external", href); }
     else { call("open_path", a.href || href); }
   });
