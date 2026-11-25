@@ -3815,7 +3815,10 @@ class InstanceServer:
                     # timeout, and a sender that gives up opens a second window.
                     conn.sendall(b"ok" if paths else b"empty")
                     for path in paths:
-                        self.viewer.open_tab(path)
+                        try:
+                            self.viewer.open_tab(path)
+                        except OSError as exc:      # one bad file must not drop the rest
+                            print(f"{APP_NAME}: could not open {path}: {exc}", file=sys.stderr)
                     if paths:
                         # Only a hand-off from another process brings the
                         # window forward; in-app opens leave it alone.
@@ -4165,6 +4168,13 @@ def main(argv: list[str] | None = None) -> int:
                 return 0
             if owner is not None:
                 break
+            # A file deleted since the startup check would make the owner reply
+            # "empty" for ever; stop once none is left.
+            for gone in [p for p in paths if not p.exists()]:
+                print(f"{APP_NAME}: no such file: {gone}", file=sys.stderr)
+            paths = [p for p in paths if p.exists()]
+            if not paths:
+                return 1
             time.sleep(0.2)
             owner = instance_lock()     # the owner may have quit meanwhile
 

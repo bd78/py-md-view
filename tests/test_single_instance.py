@@ -39,3 +39,47 @@ def test_slow_open_still_counts_as_handed_off(mdv, data_home, tmp_path):
         assert mdv.hand_off([doc], timeout=0.5)
     finally:
         server.close()
+
+
+def test_one_failing_open_does_not_drop_the_rest(mdv, data_home, tmp_path):
+    docs = [tmp_path / n for n in ("a.md", "b.md")]
+    for d in docs:
+        d.write_text("# x", "utf-8")
+    opened = []
+
+    class FlakyViewer:
+        def open_tab(self, path):
+            if path == docs[0]:
+                raise OSError("disk full")
+            opened.append(path)
+
+        def _raise(self):
+            pass
+
+    server = mdv.InstanceServer(FlakyViewer())
+    try:
+        assert mdv.hand_off(docs)
+        deadline = time.time() + 2
+        while not opened and time.time() < deadline:
+            time.sleep(0.05)
+    finally:
+        server.close()
+    assert opened == [docs[1]]
+
+
+def test_launch_stops_retrying_when_every_file_is_gone(mdv, data_home, tmp_path, monkeypatch):
+    doc = tmp_path / "a.md"
+    doc.write_text("# a", "utf-8")
+    owner = mdv.instance_lock()              # someone else owns the window
+    assert owner is not None
+
+    def refuse(paths, timeout=2.0):
+        doc.unlink()                         # deleted after the startup check
+        return False
+
+    monkeypatch.setattr(mdv, "hand_off", refuse)
+    monkeypatch.setattr(mdv.time, "sleep", lambda s: None)
+    try:
+        assert mdv.main([str(doc)]) == 1
+    finally:
+        owner.close()
