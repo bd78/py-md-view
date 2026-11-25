@@ -34,10 +34,8 @@ standard library:
 .\.venv\Scripts\python.exe md-view.py --register       # associate .md / .mmd
 ```
 
-`setup.py` wraps the same steps as `fetch_assets`, `register` and
-`develop_local`, but it needs `setuptools` — which virtual environments on
-Python 3.12+ no longer include. Either `pip install setuptools` first, or just
-use the `md-view.py` flags above; they are the same code paths.
+`setup.py` is only for `pip install .`, which puts `md-view.py` in the
+environment's `Scripts` folder; its dependencies come from `requirements.txt`.
 
 Mermaid rendering needs `mermaid.min.js` (~3.5 MB). It is downloaded on first
 use and cached in `%LOCALAPPDATA%\md-view\assets\`. Fetch it ahead of time with
@@ -274,7 +272,7 @@ has a saved *UserChoice*, which only you can change: right-click a file →
 | Path | Purpose |
 |------|---------|
 | [md-view.py](md-view.py) | the whole application — one file, so it stays easy to copy and to point a registry command at |
-| [setup.py](setup.py) | dependency install, `fetch_assets`, `register` |
+| [setup.py](setup.py) | `pip install .` packaging; dependencies from requirements.txt |
 | [requirements.txt](requirements.txt) | runtime dependencies |
 | [samples/](samples/) | a demo document, a standalone sketch and an SVG |
 
