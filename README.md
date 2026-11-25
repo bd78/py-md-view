@@ -277,6 +277,7 @@ has a saved *UserChoice*, which only you can change: right-click a file →
 | [setup.py](setup.py) | dependency install, `fetch_assets`, `register` |
 | [requirements.txt](requirements.txt) | runtime dependencies |
 | [samples/](samples/) | a demo document, a standalone sketch and an SVG |
+| [tests/](tests/) | pytest suite (see Tests) |
 
 Rendered pages are written to a temp directory and loaded as `file://` URLs;
 relative image and link paths are rewritten to absolute URLs so they resolve
@@ -291,3 +292,13 @@ from there. The directory is removed on exit.
 - `--register` is Windows-only. On Linux, install a `.desktop` file; on macOS,
   wrap the script in a small app bundle.
 - No editing. That is the point.
+
+## Tests
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install pytest
+.\.venv\Scripts\python.exe -m pytest
+```
+
+The suite loads `md-view.py` as a module and never opens a window, so it runs
+in a second or so.
