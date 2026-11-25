@@ -1,11 +1,14 @@
 """A document must not be able to run script: the page can call into Python."""
 
+import json
 import re
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 from urllib.request import url2pathname
+
+import pytest
 
 
 def test_only_md_view_scripts_carry_the_nonce(mdv):
@@ -102,8 +105,9 @@ def test_tree_never_hands_files_to_the_os(mdv, tmp_path, monkeypatch):
     assert mdv.Viewer.open_from_tree(FakeViewer(), str(exe)) is False
 
 
-def test_macos_app_bundle_is_asked_about_not_opened(mdv, tmp_path, monkeypatch):
-    app = tmp_path / "Evil.app"
+@pytest.mark.parametrize("name", ["Evil.app", "Evil.APP"])
+def test_macos_app_bundle_is_asked_about_not_opened(mdv, tmp_path, monkeypatch, name):
+    app = tmp_path / name
     app.mkdir()
     opened, asked = [], []
     monkeypatch.setattr(mdv, "_os_open", opened.append)
@@ -122,3 +126,21 @@ def test_macos_app_bundle_is_asked_about_not_opened(mdv, tmp_path, monkeypatch):
     monkeypatch.setattr(mdv, "_IS_MAC", False)  # elsewhere a folder just opens
     mdv.Viewer.open_path(viewer, app.as_uri())
     assert opened == [app.resolve()]
+
+
+def test_document_path_cannot_close_the_config_script(mdv):
+    # Legal on macOS and Linux: a folder named "<" holding one named "script><meta ...>".
+    hostile = "/home/me/</script><meta http-equiv=refresh content=0;url=x>&/notes.md"
+    tabs = [SimpleNamespace(path=PurePosixPath(hostile))]     # same on a Windows test run
+    sidebar = {"docs": mdv.build_doc_tree(tabs, active=0, stale=set())}
+    page = mdv.build_page(body="<p>x</p>", title="notes.md", mode="doc", style="github",
+                          zoom=1.0, fit=False, scroll=0.0, base=None, can_go_back=False,
+                          with_mermaid=False, sidebar=sidebar, find_query="</script>")
+
+    assert "</script><meta" not in page
+    # The HTML parser ends a script at the first "</script"; the config must reach it whole.
+    start = page.index("window.__MDV__ = ") + len("window.__MDV__ = ")
+    config = json.loads(page[start:page.index("</script", start)].rstrip(";"))
+    assert config["findQuery"] == "</script>"
+    assert hostile in json.dumps(config["docsTree"], ensure_ascii=False)   # value intact
+    assert "\\u003c/script\\u003e" in page[start:]

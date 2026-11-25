@@ -2345,6 +2345,11 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
         "panes": sidebar.get("panes") or {},
         "sidebarWidth": width, "docsHeight": docs_h,
     }
+    # The config sits inside <script>: a path or search text holding
+    # "</script>" would end it early. JSON-escaped, JS still reads < > &.
+    # Built here: f-string expressions may not contain "\" before Python 3.12.
+    cfg_json = (json.dumps(cfg).replace("<", "\\u003c").replace(">", "\\u003e")
+                .replace("&", "\\u0026"))
     base_tag = f'<base href="{html.escape(base.as_uri() + "/", quote=True)}">' if base else ""
     # Only scripts carrying this page's nonce run. A document's own <script>
     # or onerror= would otherwise reach window.pywebview.api.
@@ -2384,7 +2389,7 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
 {find_bar_html()}
 <div id="scroller"><div id="content">{body}</div></div>
 <div id="toast"></div>
-<script nonce="{nonce}">window.__MDV__ = {json.dumps(cfg)};</script>
+<script nonce="{nonce}">window.__MDV__ = {cfg_json};</script>
 <script nonce="{nonce}">{VIEWER_JS}</script>
 {mermaid_tag}
 </body>
