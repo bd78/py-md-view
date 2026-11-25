@@ -3427,11 +3427,12 @@ class Viewer:
     def _watch_loop(self) -> None:
         """Reload the visible tab when its file changes; flag the others."""
         while not self._stop.wait(0.7):
-            try:
-                watched = [t.path for t in list(self.tabs) if t.path is not None]
-            except (IndexError, RuntimeError):
-                continue
-            active_path = self.current
+            # Under the lock: close_tab pops a tab one step before it fixes
+            # self.active, and reading self.current in between raised
+            # IndexError here, which ended the watcher for the session.
+            with self._nav:
+                watched = [t.path for t in self.tabs if t.path is not None]
+                active_path = self.current
             for path in dict.fromkeys(watched):
                 known = self._mtimes.get(path)
                 if known is None:
