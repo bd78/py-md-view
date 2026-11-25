@@ -3493,14 +3493,10 @@ class Viewer:
         from hmac import compare_digest
 
         api = Api(self)
-        actions = {name: getattr(api, name) for name in (
-            "go_back", "go_forward", "refresh", "open_path", "open_external",
-            "select_tab", "close_tab", "next_tab", "prev_tab", "new_tab",
-            "pick_file", "list_dir", "set_expanded", "set_doc_collapsed",
-            "open_from_tree", "set_sidebar", "reveal_active", "toggle_fullscreen",
-            "escape", "set_find_query", "set_font", "toggle_csv_align",
-            "save_view_prefs",
-        )}
+        # Every public Api method, read from the class so that adding or
+        # deleting one there can never leave this table naming a missing method.
+        actions = {name: getattr(api, name) for name in dir(api)
+                   if not name.startswith("_") and callable(getattr(api, name))}
 
         def dispatch(key, action, args):
             current_key = self._bridge_key
