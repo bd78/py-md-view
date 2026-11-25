@@ -28,3 +28,8 @@ def test_diagram_after_a_code_block_still_renders(mdv):
 def test_inline_triple_backticks_do_not_open_a_block(mdv):
     text = "Use ```code``` here.\n\n```mermaid\ngraph TD\n```\n"
     assert diagrams(mdv, text) == 1
+
+
+def test_fence_inside_raw_html_does_not_hide_later_diagram(mdv):
+    text = "<pre>\n```\n</pre>\n\n```mermaid\ngraph TD; A-->B\n```\n"
+    assert diagrams(mdv, text) == 1
