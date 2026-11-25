@@ -16,6 +16,7 @@ Author: bd78 (https://github.com/bd78)
 from __future__ import annotations
 
 import argparse
+import errno
 import functools
 import html
 import json
@@ -3854,17 +3855,20 @@ class InstanceServer:
                     if message.get("token") != self.token:
                         conn.sendall(b"denied")
                         continue
-                    opened = 0
-                    for item in message.get("paths") or []:
-                        path = Path(item)
-                        if path.exists():
+                    paths = [Path(item) for item in message.get("paths") or []]
+                    paths = [p for p in paths if p.exists()]
+                    # Answer before opening: opening can outlast the sender's
+                    # timeout, and a sender that gives up opens a second window.
+                    conn.sendall(b"ok" if paths else b"empty")
+                    for path in paths:
+                        try:
                             self.viewer.open_tab(path)
-                            opened += 1
-                    if opened:
+                        except OSError as exc:      # one bad file must not drop the rest
+                            print(f"{APP_NAME}: could not open {path}: {exc}", file=sys.stderr)
+                    if paths:
                         # Only a hand-off from another process brings the
                         # window forward; in-app opens leave it alone.
                         self.viewer._raise()
-                    conn.sendall(b"ok" if opened else b"empty")
                 except (OSError, ValueError, TypeError):
                     continue
 
@@ -3884,6 +3888,40 @@ class InstanceServer:
 
 def instance_file() -> Path:
     return data_dir() / "instance.json"
+
+
+def instance_lock():
+    """Take the per-user lock that marks the window owner; None if it is held.
+
+    Launches that start together (several files opened at once from Explorer)
+    would all find no running window; the lock lets exactly one become it.
+    The OS drops the lock when its process exits, so a crash never leaves it
+    stale. The returned handle must stay referenced while the window is open.
+    """
+    try:
+        handle = open(data_dir() / "instance.lock", "a+b")
+    except OSError:
+        return True     # no lock file possible: every launch may own a window, as before
+    try:
+        handle.seek(0)
+        if sys.platform == "win32":
+            import msvcrt
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return handle
+    except OSError as exc:
+        handle.close()
+        # Only "someone else holds it" means another viewer owns the window.
+        # msvcrt reports that as EACCES (EDEADLOCK from the blocking form).
+        if isinstance(exc, BlockingIOError) or (
+                sys.platform == "win32" and exc.errno in (errno.EACCES, errno.EDEADLK)):
+            return None
+        # Any other failure (ENOLCK, ...) would make every launch wait for an
+        # owner that never comes; open a window without the lock instead.
+        print(f"{APP_NAME}: cannot take the instance lock ({exc})", file=sys.stderr)
+        return True
 
 
 def hand_off(paths: list[Path], timeout: float = 2.0) -> bool:
@@ -4174,9 +4212,25 @@ def main(argv: list[str] | None = None) -> int:
 
     # A viewer already running? Give it the files as new tabs instead of
     # starting a second window -- this is the common case when documents are
-    # opened one after another from Explorer.
-    if paths and not args.new_window and hand_off(paths):
-        return 0
+    # opened one after another from Explorer. When the owner is still starting
+    # up, keep trying until its listener answers; the lock is released if the owner
+    # dies, so the wait always ends, and giving up early would open a second window.
+    owner = None if args.new_window else instance_lock()
+    if paths and not args.new_window:
+        while True:
+            if hand_off(paths):
+                return 0
+            if owner is not None:
+                break
+            # A file deleted since the startup check would make the owner reply
+            # "empty" for ever; stop once none is left.
+            for gone in [p for p in paths if not p.exists()]:
+                print(f"{APP_NAME}: no such file: {gone}", file=sys.stderr)
+            paths = [p for p in paths if p.exists()]
+            if not paths:
+                return 1
+            time.sleep(0.2)
+            owner = instance_lock()     # the owner may have quit meanwhile
 
     # Grab mermaid the first time it is actually needed, so the very first
     # launch of a diagram is not silently broken.
@@ -4215,6 +4269,10 @@ def main(argv: list[str] | None = None) -> int:
         except OSError as exc:
             # Without a listener we simply lose single-instance behaviour.
             print(f"{APP_NAME}: single-instance listener unavailable ({exc})", file=sys.stderr)
+            # Nobody can reach this window, so do not keep later launches waiting for it.
+            if hasattr(owner, "close"):
+                owner.close()
+            owner = None
     viewer.run()
     return 0
 

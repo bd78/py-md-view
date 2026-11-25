@@ -57,7 +57,8 @@ md-view.py --style github notes.md   # or --github-ext, --light, --dark
 
 Opening a document while md-view is already running adds a **tab** to the
 existing window rather than starting a second process — which is what you want
-when documents are opened one at a time from Explorer. The running instance is
+when documents are opened from Explorer, one at a time or several selected at
+once (a lock file, `instance.lock`, lets only one launch become the window). The running instance is
 found through a loopback port recorded in `%LOCALAPPDATA%\md-view\instance.json`,
 guarded by a per-session token so nothing else on the machine can drive your
 window. Pass `--new-window` to opt out and get a separate window.
