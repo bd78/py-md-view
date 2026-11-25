@@ -40,7 +40,9 @@ Python 3.12+ no longer include. Either `pip install setuptools` first, or just
 use the `md-view.py` flags above; they are the same code paths.
 
 Mermaid rendering needs `mermaid.min.js` (~3.5 MB). It is downloaded on first
-use and cached in `%LOCALAPPDATA%\md-view\assets\`. Fetch it ahead of time with
+use and cached in `%LOCALAPPDATA%\md-view\assets\`. The version is pinned
+(`MERMAID_VERSION` in `md-view.py`) and the download is rejected unless its
+SHA-256 matches `MERMAID_SHA256`. Fetch it ahead of time with
 `--fetch-assets`, or drop your own copy in `./assets/mermaid.min.js` to ship it
 alongside the script. Everything else works with no network at all.
 
@@ -57,7 +59,8 @@ md-view.py --style github notes.md   # or --github-ext, --light, --dark
 
 Opening a document while md-view is already running adds a **tab** to the
 existing window rather than starting a second process — which is what you want
-when documents are opened one at a time from Explorer. The running instance is
+when documents are opened from Explorer, one at a time or several selected at
+once (a lock file, `instance.lock`, lets only one launch become the window). The running instance is
 found through a loopback port recorded in `%LOCALAPPDATA%\md-view\instance.json`,
 guarded by a per-session token so nothing else on the machine can drive your
 window. Pass `--new-window` to opt out and get a separate window.
@@ -282,8 +285,8 @@ has a saved *UserChoice*, which only you can change: right-click a file →
 | [samples/](samples/) | a demo document, a standalone sketch and an SVG |
 
 Rendered pages are written to a temp directory and loaded as `file://` URLs;
-relative image and link paths are rewritten to absolute URLs so they resolve
-from there. The directory is removed on exit.
+each page carries a `<base href>` pointing at the document's own folder, so
+relative image and link paths resolve from there. The directory is removed on exit.
 
 ## Limitations
 
