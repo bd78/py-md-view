@@ -35,3 +35,17 @@ def test_concurrent_saves_never_expose_a_partial_file(mdv, tmp_path, monkeypatch
     assert not broken
     assert json.loads(path.read_text("utf-8")) == prefs
     assert [p.name for p in tmp_path.iterdir()] == ["prefs.json"]
+
+
+def test_failed_save_cleans_up_while_holding_the_lock(mdv, tmp_path, monkeypatch):
+    """Cleanup outside the lock could delete a temp file another thread just staged."""
+    monkeypatch.setattr(mdv, "PREFS_PATH", tmp_path / "prefs.json")
+    monkeypatch.setattr(mdv.os, "replace", lambda *a: (_ for _ in ()).throw(OSError("boom")))
+    held = []
+    real_unlink = type(tmp_path).unlink
+    monkeypatch.setattr(type(tmp_path), "unlink",
+                        lambda self, *a, **k: (held.append(mdv._PREFS_LOCK.locked()),
+                                               real_unlink(self, *a, **k))[1])
+    mdv.save_prefs({"a": 1})
+    assert held == [True]
+    assert list(tmp_path.iterdir()) == []

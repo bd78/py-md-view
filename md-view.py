@@ -122,16 +122,16 @@ def save_prefs(prefs: dict) -> None:
     leaves a half-written prefs.json (which would silently reset every setting)."""
     path = PREFS_PATH or data_dir() / "prefs.json"
     tmp = path.with_name(f"prefs.{os.getpid()}.tmp")
-    try:
-        with _PREFS_LOCK:       # bridge calls persist from several threads
+    with _PREFS_LOCK:       # bridge calls persist from several threads; cleanup stays inside so it cannot delete another thread's staged file
+        try:
             tmp.write_text(json.dumps(prefs, indent=2), "utf-8")
             os.replace(tmp, path)
-    except Exception:
-        try:
-            tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
-        # preferences are a convenience, never a failure mode
+        except Exception:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            # preferences are a convenience, never a failure mode
 
 
 def resolve_style(requested: str | None, prefs: dict) -> str:
