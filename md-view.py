@@ -1874,8 +1874,17 @@ VIEWER_JS = r"""
     var a = e.target.closest && e.target.closest("a[href]");
     if (!a) return;
     var href = a.getAttribute("href") || "";
-    if (href.charAt(0) === "#") return;                     // in-page anchor
     e.preventDefault();
+    if (href.charAt(0) === "#") {
+      // In-page anchor. Scrolled here because <base> points at the
+      // document's folder: the browser would resolve "#x" against it and
+      // leave the viewer for that folder.
+      var id = href.slice(1), target = null;
+      try { id = decodeURIComponent(id); } catch (err) { /* keep it raw */ }
+      if (id) target = document.getElementById(id);
+      if (target) target.scrollIntoView();
+      return;
+    }
     if (/^(https?|ftp|mailto):/i.test(href)) { call("open_external", href); }
     else { call("open_path", a.href || href); }
   });
