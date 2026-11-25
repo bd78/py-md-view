@@ -229,7 +229,7 @@ def _build_mermaid_extension(markdown_mod):
                     h = RAW_HTML_OPEN.match(lines[i])
                     if h:
                         raw_end = re.compile("-->" if h.group("comment") else "</" + h.group("tag") + r"\s*>", re.IGNORECASE)
-                if raw_end is not None and not m:
+                if raw_end is not None:
                     # A fence inside raw HTML is not a code block: copy through to the end tag.
                     out.append(lines[i])
                     if raw_end.search(lines[i]):

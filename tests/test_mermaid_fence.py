@@ -33,3 +33,9 @@ def test_inline_triple_backticks_do_not_open_a_block(mdv):
 def test_fence_inside_raw_html_does_not_hide_later_diagram(mdv):
     text = "<pre>\n```\n</pre>\n\n```mermaid\ngraph TD; A-->B\n```\n"
     assert diagrams(mdv, text) == 1
+
+
+def test_mermaid_fence_inside_raw_html_stays_literal(mdv):
+    text = "<pre>\n```mermaid\ngraph TD; A-->B\n```\n</pre>\n"
+    assert diagrams(mdv, text) == 0
+    assert "```mermaid" in mdv.render_markdown(text)[0]
