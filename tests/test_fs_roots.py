@@ -32,3 +32,20 @@ def test_drives_are_listed_without_touching_them(mdv, monkeypatch):
     mdv.filesystem_roots.cache_clear()
     assert any(r["path"] == "Q:\\" for r in mdv.filesystem_roots(None))
     mdv.filesystem_roots.cache_clear()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="drive letters are Windows-only")
+def test_drive_root_anchor_is_not_probed(mdv, monkeypatch, tmp_path):
+    monkeypatch.setattr(mdv, "_windows_drives", lambda: ["Q"])
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    real_is_dir = Path.is_dir
+
+    def is_dir(self):
+        assert str(self).upper() != "Q:\\", "an offline drive was probed"
+        return real_is_dir(self)
+
+    monkeypatch.setattr(Path, "is_dir", is_dir)
+    mdv.filesystem_roots.cache_clear()
+    roots = mdv.filesystem_roots(Path("Q:\\"))
+    assert sum(r["path"] == "Q:\\" for r in roots) == 1      # anchor and drive list dedupe
+    mdv.filesystem_roots.cache_clear()

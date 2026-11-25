@@ -2709,9 +2709,10 @@ def filesystem_roots(anchor: Path | None = None) -> list[dict]:
                       "root": root_id, "key": node_key(root_id, path)})
 
     if anchor is not None:
-        add("anchor", f"{anchor.name or anchor} (documents)", anchor)
+        # Not probed: an open document proves it exists, and the anchor may be a drive root.
+        add("anchor", f"{anchor.name or anchor} (documents)", anchor, probe=False)
     home = Path.home()
-    add("home", "Home", home)
+    add("home", "Home", home, probe=False)   # the home folder is assumed to exist
     for folder in ("Desktop", "Documents", "Downloads"):
         add(folder.lower(), folder, home / folder)
 
