@@ -207,6 +207,9 @@ MERMAID_FENCE = re.compile(
     r"(?:\{[ ]*\.?)?(?P<lang>mermaid)\b[^\n]*$",
     re.IGNORECASE,
 )
+CODE_FENCE = re.compile(r"^[ ]{0,3}(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
+# Raw HTML blocks whose content is verbatim until the closing tag (CommonMark types 1 and 2).
+RAW_HTML_OPEN = re.compile(r"^[ ]{0,3}<(?:(?P<tag>pre|script|style|textarea)\b|(?P<comment>!--))", re.IGNORECASE)
 
 
 def _build_mermaid_extension(markdown_mod):
@@ -220,16 +223,42 @@ def _build_mermaid_extension(markdown_mod):
 
     class MermaidPreprocessor(Preprocessor):
         def run(self, lines):
-            out, i = [], 0
+            out, i, raw_end = [], 0, None
             while i < len(lines):
                 m = MERMAID_FENCE.match(lines[i])
-                if not m:
+                if raw_end is None and not m:
+                    h = RAW_HTML_OPEN.match(lines[i])
+                    if h:
+                        raw_end = re.compile("-->" if h.group("comment") else "</" + h.group("tag") + r"\s*>", re.IGNORECASE)
+                if raw_end is not None:
+                    # A fence inside raw HTML is not a code block: copy through to the end tag.
+                    out.append(lines[i])
+                    if raw_end.search(lines[i]):
+                        raw_end = None
+                    i += 1
+                    continue
+                other = None if m else CODE_FENCE.match(lines[i])
+                if other and other.group("fence")[0] == "`" and "`" in other.group("info"):
+                    other = None    # ```inline``` code, not a fence
+                if not m and not other:
                     out.append(lines[i])
                     i += 1
                     continue
-                fence = m.group("fence")
-                indent = len(m.group("indent"))
+                fence = (m or other).group("fence")
                 close = re.compile(r"^[ ]{0,3}" + fence[0] + "{" + str(len(fence)) + r",}[ ]*$")
+                if other:
+                    # Any other code block is copied through untouched, so a
+                    # ```mermaid line inside it stays an example.
+                    out.append(lines[i])
+                    i += 1
+                    while i < len(lines) and not close.match(lines[i]):
+                        out.append(lines[i])
+                        i += 1
+                    if i < len(lines):
+                        out.append(lines[i])
+                        i += 1
+                    continue
+                indent = len(m.group("indent"))
                 body, i = [], i + 1
                 while i < len(lines) and not close.match(lines[i]):
                     body.append(lines[i][indent:] if lines[i][:indent].isspace() else lines[i])
@@ -301,44 +330,6 @@ def render_markdown(text: str) -> tuple[str, str]:
     # re-parsing the rest of the document or touching escaped code examples.
     body = RAW_META.sub('<meta http-equiv=""', body)
     return body, getattr(md, "toc", "")
-
-
-# --------------------------------------------------------------------------- #
-# Link / image rewriting so relative paths resolve from the temp HTML
-# --------------------------------------------------------------------------- #
-
-ATTR_URL = re.compile(
-    r'(?P<attr>\b(?:src|href|poster)\s*=\s*)(?P<q>["\'])(?P<url>[^"\']*)(?P=q)',
-    re.IGNORECASE,
-)
-ABSOLUTE_URL = re.compile(r"^(?:[a-z][a-z0-9+.-]*:|//|#|data:|mailto:)", re.IGNORECASE)
-
-
-def rewrite_urls(html_text: str, base: Path) -> str:
-    """Turn document-relative URLs into absolute file:// URLs.
-
-    The rendered HTML lives in a temp directory, so relative references would
-    otherwise dangle. Anchors and external schemes are left untouched.
-    """
-    from urllib.request import url2pathname
-
-    def sub(m):
-        url = m.group("url")
-        if not url or ABSOLUTE_URL.match(url):
-            return m.group(0)
-        frag = ""
-        if "#" in url:
-            url, frag = url.split("#", 1)
-            frag = "#" + frag
-        if not url:
-            return m.group(0)
-        try:
-            target = (base / url2pathname(url)).resolve()
-        except (OSError, ValueError):
-            return m.group(0)
-        return f'{m.group("attr")}{m.group("q")}{target.as_uri()}{frag}{m.group("q")}'
-
-    return ATTR_URL.sub(sub, html_text)
 
 
 # --------------------------------------------------------------------------- #
@@ -1885,8 +1876,16 @@ VIEWER_JS = r"""
     var a = e.target.closest && e.target.closest("a[href]");
     if (!a) return;
     var href = a.getAttribute("href") || "";
-    if (href.charAt(0) === "#") return;                     // in-page anchor
     e.preventDefault();
+    if (href.charAt(0) === "#") {
+      // <base> would resolve a bare "#x" to the document's folder and navigate there.
+      var id = href.slice(1), t = null;
+      try { id = decodeURIComponent(id); } catch (err) { /* keep the raw text */ }
+      if (id) t = document.getElementById(id) || document.getElementsByName(id)[0];
+      if (t) t.scrollIntoView();
+      else if (!id) scroller.scrollTop = 0;
+      return;
+    }
     if (/^(https?|ftp|mailto):/i.test(href)) { call("open_external", href); }
     else { call("open_path", a.href || href); }
   });
@@ -2913,7 +2912,8 @@ def _parse_document(path: Path, *, csv_align: bool = False) -> dict:
     kind = classify(path)
 
     if kind == "markdown":
-        body = rewrite_urls(render_markdown(read_text(path))[0], path.parent)
+        # Relative src/href resolve through the page's <base>, set to path.parent.
+        body = render_markdown(read_text(path))[0]
         return {"body": body, "mode": "doc", "subtitle": "", "base": path.parent,
                 "with_mermaid": 'class="mermaid"' in body, "vector": False, "view_box": None}
 
