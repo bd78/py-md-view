@@ -256,6 +256,7 @@ def mermaid_block(source: str) -> str:
 
 
 TASK_ITEM = re.compile(r"<li>(\s*)\[([ xX])\]\s+")
+RAW_META = re.compile(r"<meta(?=[\t\n\f\r />])", re.IGNORECASE)
 
 
 def _task_lists(html_text: str) -> str:
@@ -294,6 +295,10 @@ def render_markdown(text: str) -> tuple[str, str]:
 
     md = markdown_mod.Markdown(extensions=extensions, extension_configs=extension_configs)
     body = _task_lists(md.convert(text))
+    # CSP controls script execution, but does not block meta refresh. HTML
+    # keeps the first copy of an attribute; make raw meta pragmas inert without
+    # re-parsing the rest of the document or touching escaped code examples.
+    body = RAW_META.sub('<meta http-equiv=""', body)
     return body, getattr(md, "toc", "")
 
 
@@ -958,6 +963,14 @@ VIEWER_JS = r"""
 (function () {
   "use strict";
   var CFG = window.__MDV__;
+  var bridgeKey = (function () {
+    var hash = window.location.hash;
+    if (!/^#[A-Za-z0-9_-]{43}$/.test(hash)) return "";
+    // Keep the key in this page's closure, out of the browser history URL.
+    try { window.history.replaceState(null, "", window.location.href.split("#")[0]); }
+    catch (err) { return ""; }
+    return hash.slice(1);
+  })();
   var STEPS = CFG.steps;
   var scroller = document.getElementById("scroller");
   var content  = document.getElementById("content");
@@ -1101,15 +1114,12 @@ VIEWER_JS = r"""
 
   var persistTimer = null;
   function persist() {
-    if (!window.pywebview || !window.pywebview.api) return;
     clearTimeout(persistTimer);
     persistTimer = setTimeout(function () {
-      try {
-        window.pywebview.api.save_view_prefs({
-          zoom: zoom, style: document.documentElement.dataset.style,
-          fit: fitMode, mode: mode
-        });
-      } catch (e) { /* bridge not ready yet */ }
+      call("save_view_prefs", {
+        zoom: zoom, style: document.documentElement.dataset.style,
+        fit: fitMode, mode: mode
+      });
     }, 400);
   }
 
@@ -1358,8 +1368,8 @@ VIEWER_JS = r"""
   function callAsync(name) {
     var args = Array.prototype.slice.call(arguments, 1);
     var api = window.pywebview && window.pywebview.api;
-    if (!api || typeof api[name] !== "function") return Promise.reject("no bridge");
-    try { return Promise.resolve(api[name].apply(api, args)); }
+    if (!bridgeKey || !api || typeof api.dispatch !== "function") return Promise.reject("no bridge");
+    try { return Promise.resolve(api.dispatch(bridgeKey, name, args)); }
     catch (err) { return Promise.reject(err); }
   }
 
@@ -2108,12 +2118,10 @@ VIEWER_JS = r"""
   /* ------------------------------------------------------------------ */
 
   function call(name) {
-    var args = Array.prototype.slice.call(arguments, 1);
-    var api = window.pywebview && window.pywebview.api;
-    if (!api || typeof api[name] !== "function") return;
-    try { api[name].apply(api, args); } catch (err) { console.error(name, err); }
+    callAsync.apply(null, arguments).catch(function () {
+      // The bridge may be loading, or the call may have replaced this page.
+    });
   }
-  window.__mdv_call = call;
 
   /* report scroll position so a reload can restore it */
   window.__mdv_scroll = function () {
@@ -3096,6 +3104,7 @@ class Viewer:
 
         self._tmpdir = Path(tempfile.mkdtemp(prefix="mdview-"))
         self._counter = 0
+        self._bridge_key = None
         self._nav = threading.RLock()
         self._js = threading.RLock()
         self._mtimes: dict[Path, float] = {}
@@ -3165,6 +3174,8 @@ class Viewer:
         A new name each time: navigating to the URL that is already loaded
         produces no navigation event, which would strand ``evaluate_js``.
         """
+        import secrets
+
         self._counter += 1
         f = self._tmpdir / f"view-{self._counter:04d}.html"
         f.write_text(html_text, "utf-8")
@@ -3174,7 +3185,11 @@ class Viewer:
                     old.unlink(missing_ok=True)
             except (ValueError, OSError):
                 pass
-        return f.as_uri()
+        # Only the navigation initiated by Python carries the key. A file URL
+        # fragment is omitted from referrers and never written into the HTML.
+        # Repaints rotate it so previously staged pages lose access.
+        self._bridge_key = secrets.token_urlsafe(32)
+        return f"{f.as_uri()}#{self._bridge_key}"
 
     # -- page building ----------------------------------------------------- #
 
@@ -3472,8 +3487,27 @@ class Viewer:
 
     def run(self) -> None:
         import shutil
+        from hmac import compare_digest
 
         api = Api(self)
+        actions = {name: getattr(api, name) for name in (
+            "go_back", "go_forward", "refresh", "open_path", "open_external",
+            "select_tab", "close_tab", "next_tab", "prev_tab", "new_tab",
+            "pick_file", "list_dir", "set_expanded", "set_doc_collapsed",
+            "open_from_tree", "set_sidebar", "reveal_active", "toggle_fullscreen",
+            "escape", "set_find_query", "set_font", "toggle_csv_align",
+            "save_view_prefs",
+        )}
+
+        def dispatch(key, action, args):
+            current_key = self._bridge_key
+            if (current_key is None or not isinstance(key, str) or not key.isascii()
+                    or not compare_digest(key, current_key)
+                    or not isinstance(action, str) or not isinstance(args, list)):
+                return None
+            handler = actions.get(action)
+            return handler(*args) if handler is not None else None
+
         with self._nav:
             start_url = self._stage(self._page_for(self.tab, 0.0))
             if self.tab.path is not None:
@@ -3485,7 +3519,6 @@ class Viewer:
         self._window = self.webview.create_window(
             self._title(self.current),
             url=start_url,
-            js_api=api,
             width=1100, height=820, min_size=(420, 320),
             background_color=bg,
             text_select=True,
@@ -3493,6 +3526,9 @@ class Viewer:
             easy_drag=False,
         )
         api._window = self._window
+        # Use an explicit function rather than giving pywebview a traversable
+        # js_api object. The dispatcher checks the key on every call.
+        self._window.expose(dispatch)
 
         def on_start():
             if self.watch_enabled:
@@ -3601,16 +3637,12 @@ class Viewer:
 
 
 class Api:
-    """Methods exposed to the page as window.pywebview.api.*
+    """Viewer actions available through the authenticated dispatcher.
 
     These run on the JS bridge thread. None of them may block on the page.
     """
 
     def __init__(self, viewer: Viewer):
-        # Both names must stay underscore-prefixed. pywebview builds the JS
-        # proxy by walking every public, non-callable attribute of this
-        # object; a reachable Window sends it recursing through
-        # window.native into WebView2's COM objects.
         self._viewer = viewer
         self._window = None
 

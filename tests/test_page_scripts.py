@@ -1,7 +1,11 @@
 """A document must not be able to run script: the page can call into Python."""
 
 import re
+import sys
 from pathlib import Path
+from types import SimpleNamespace
+from urllib.parse import urlsplit
+from urllib.request import url2pathname
 
 
 def test_only_md_view_scripts_carry_the_nonce(mdv):
@@ -23,6 +27,67 @@ def test_welcome_and_error_pages_have_no_inline_handlers(mdv):
     for page in (mdv.render_welcome("github"), mdv.render_error("x", "y", "github")):
         assert "onclick=" not in page
         assert 'id="pickFile"' in page
+
+
+def test_markdown_disables_raw_meta_pragmas(mdv, tmp_path):
+    doc = tmp_path / "sample.md"
+    doc.write_text(
+        '<META content="15" HTTP-EQUIV=refresh>\n\n'
+        '<div>\n<meta/http-equiv="Refresh" content="15" />\n</div>\n\n'
+        '<details><summary>Details</summary>Text</details>\n\n'
+        '`<meta http-equiv=refresh content=15>`\n',
+        encoding="utf-8",
+    )
+    page = mdv.render_document(doc, style="github", zoom=1.0, fit=False,
+                               scroll=0.0, can_go_back=False)
+    assert '<meta http-equiv="" content="15" HTTP-EQUIV=refresh>' in page
+    assert '<meta http-equiv=""/http-equiv="Refresh" content="15" />' in page
+    assert '<details><summary>Details</summary>Text</details>' in page
+    assert '<code>&lt;meta http-equiv=refresh content=15&gt;</code>' in page
+    assert '<meta http-equiv="Content-Security-Policy"' in page
+
+
+def test_only_current_generated_page_can_call_viewer_actions(mdv, monkeypatch):
+    class Window:
+        def expose(self, *functions):
+            self.exposed = {fn.__name__: fn for fn in functions}
+
+    def create_window(title, *, url, **kwargs):
+        assert kwargs.get("js_api") is None
+        window.url = url
+        return window
+
+    def start(on_start, **kwargs):
+        assert set(window.exposed) == {"dispatch"}
+        dispatch = window.exposed["dispatch"]
+        staged = urlsplit(window.url)
+        key = staged.fragment
+        staged_path = Path(url2pathname(staged.path))
+        page = staged_path.read_text("utf-8")
+        assert key and key not in page
+        for bad_key in ("", "wrong", "é", None):
+            assert dispatch(bad_key, "set_find_query", ["denied"]) is None
+        assert viewer.find_query == ""
+        assert dispatch(key, "_persist", []) is None
+        assert dispatch(key, "set_find_query", ["allowed"]) is True
+        assert viewer.find_query == "allowed"
+        new_key = urlsplit(viewer._stage(page)).fragment
+        assert new_key != key
+        assert dispatch(key, "set_find_query", ["stale"]) is None
+        assert viewer.find_query == "allowed"
+        assert dispatch(new_key, "set_find_query", ["repainted"]) is True
+        assert viewer.find_query == "repainted"
+
+    window = Window()
+    monkeypatch.setitem(sys.modules, "webview", SimpleNamespace(
+        create_window=create_window, start=start,
+    ))
+    monkeypatch.setattr(mdv, "load_prefs", dict)
+    monkeypatch.setattr(mdv, "save_prefs", lambda prefs: None)
+    monkeypatch.setattr(mdv, "_drop_stale_bridge_replies", lambda: None)
+    viewer = mdv.Viewer(style="github", zoom=1.0, watch=False)
+    monkeypatch.setattr(viewer, "_sidebar", dict)
+    viewer.run()
 
 
 def test_tree_never_hands_files_to_the_os(mdv, tmp_path, monkeypatch):
