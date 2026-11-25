@@ -1,35 +1,19 @@
 #!/usr/bin/env python3
-"""Requirements setup for md-view.
+"""Packaging for md-view: `pip install .` adds md-view.py to Scripts.
 
-Typical use:
-    python setup.py develop_local     # install deps into the current interpreter
-    python setup.py fetch_assets      # cache mermaid.js for offline diagrams
-    pip install .                     # regular install (adds md-view.py to Scripts)
+Setting up needs no setuptools at all; these are md-view.py flags:
+    python -m pip install -r requirements.txt
+    python md-view.py --fetch-assets      # cache mermaid.js for offline diagrams
+    python md-view.py --register          # associate .md / .mmd (Windows)
 
 Author: bd78 (https://github.com/bd78)
 """
 
 from __future__ import annotations
 
-import subprocess
-import sys
 from pathlib import Path
 
-try:
-    from setuptools import Command, setup
-except ImportError:
-    # Virtual environments on Python 3.12+ no longer include setuptools.
-    sys.exit(
-        "setup.py needs setuptools, which this environment does not have:\n"
-        "    python -m pip install setuptools\n"
-        "\n"
-        "You do not need it to use md-view, though. The equivalents below run on\n"
-        "the standard library alone:\n"
-        "    python md-view.py --register              (= setup.py register)\n"
-        "    python md-view.py --unregister            (= setup.py register --undo)\n"
-        "    python md-view.py --fetch-assets          (= setup.py fetch_assets)\n"
-        "    python -m pip install -r requirements.txt (= setup.py develop_local)\n"
-    )
+from setuptools import setup
 
 HERE = Path(__file__).resolve().parent
 
@@ -46,112 +30,13 @@ def version() -> str:
     return "0.0.0"
 
 
-# --------------------------------------------------------------------------- #
-# Dependencies
-# --------------------------------------------------------------------------- #
-# pywebview draws the window with the platform's own web view -- WebView2 on
-# Windows, WebKit on macOS, WebKitGTK on Linux -- so there is no bundled
-# browser engine to ship or start up.
-
-INSTALL_REQUIRES = [
-    "pywebview>=5.0",
-    "markdown>=3.5",
-    "pygments>=2.17",
-]
-
-EXTRAS = {
-    # pywebview's Windows backend talks to WebView2 through .NET.
-    ":sys_platform == 'win32'": ["pythonnet>=3.0"],
-    # Linux needs the GTK bindings for WebKitGTK.
-    ":sys_platform == 'linux'": ["pywebview[gtk]>=5.0"],
-    "dev": ["pytest>=8.0"],
-}
-
-
-# --------------------------------------------------------------------------- #
-# Custom commands
-# --------------------------------------------------------------------------- #
-
-class FetchAssets(Command):
-    """Download mermaid.min.js so diagrams render without a network."""
-
-    description = "download mermaid.js into the per-user asset cache"
-    user_options = [
-        ("force", "f", "re-download even if a cached copy exists"),
-        ("vendor", None, "save into ./assets next to md-view.py instead of the user cache"),
-    ]
-
-    def initialize_options(self):
-        self.force = False
-        self.vendor = False
-
-    def finalize_options(self):
-        pass
-
-    def run(self):
-        sys.path.insert(0, str(HERE))
-        import importlib.util
-
-        spec = importlib.util.spec_from_file_location("mdview_main", HERE / "md-view.py")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-
-        if self.vendor:
-            import urllib.request
-
-            target = HERE / "assets" / "mermaid.min.js"
-            target.parent.mkdir(parents=True, exist_ok=True)
-            print(f"Downloading {module.MERMAID_CDN} -> {target}")
-            with urllib.request.urlopen(module.MERMAID_CDN, timeout=120) as resp:
-                target.write_bytes(resp.read())
-            print(f"Vendored {target} ({target.stat().st_size / 1e6:.1f} MB)")
-            return
-
-        if module.fetch_mermaid(force=bool(self.force)) is None:
-            raise SystemExit("mermaid.js download failed")
-
-
-class DevelopLocal(Command):
-    """pip-install the runtime dependencies into the running interpreter."""
-
-    description = "install runtime dependencies with pip"
-    user_options = [("upgrade", "U", "upgrade already-installed packages")]
-
-    def initialize_options(self):
-        self.upgrade = False
-
-    def finalize_options(self):
-        pass
-
-    def run(self):
-        requirements = list(INSTALL_REQUIRES)
-        if sys.platform == "win32":
-            requirements.append("pythonnet>=3.0")
-        elif sys.platform == "linux":
-            requirements.append("pywebview[gtk]>=5.0")
-        cmd = [sys.executable, "-m", "pip", "install"]
-        if self.upgrade:
-            cmd.append("--upgrade")
-        cmd += requirements
-        print(" ".join(cmd))
-        subprocess.check_call(cmd)
-
-
-class Register(Command):
-    """Associate .md / .mmd with the viewer (Windows)."""
-
-    description = "register file associations for .md and .mmd"
-    user_options = [("undo", None, "remove the associations instead")]
-
-    def initialize_options(self):
-        self.undo = False
-
-    def finalize_options(self):
-        pass
-
-    def run(self):
-        flag = "--unregister" if self.undo else "--register"
-        subprocess.check_call([sys.executable, str(HERE / "md-view.py"), flag])
+def requirements() -> list[str]:
+    """requirements.txt is the one dependency list; its platform markers carry over."""
+    # read_text raises if the file is missing (e.g. absent from an sdist) instead of
+    # silently producing install_requires=[].
+    text = (HERE / "requirements.txt").read_text("utf-8")
+    return [line.strip() for line in text.splitlines()
+            if line.strip() and not line.lstrip().startswith("#")]
 
 
 setup(
@@ -163,16 +48,10 @@ setup(
     author="Bruno D.",
     license="MIT",
     python_requires=">=3.9",
-    install_requires=INSTALL_REQUIRES,
-    extras_require=EXTRAS,
+    install_requires=requirements(),
     # md-view.py is a script, not an importable module (the hyphen is deliberate:
     # it reads well on a command line and in a registry command string).
     scripts=["md-view.py"],
-    cmdclass={
-        "fetch_assets": FetchAssets,
-        "develop_local": DevelopLocal,
-        "register": Register,
-    },
     classifiers=[
         "Development Status :: 4 - Beta",
         "Environment :: Win32 (MS Windows)",
