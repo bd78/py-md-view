@@ -2134,6 +2134,7 @@ VIEWER_JS = r"""
   on("fitBtn", doFit);
   on("backBtn", function () { call("go_back"); });
   on("openBtn", function () { call("pick_file"); });
+  on("pickFile", function () { call("pick_file"); });
   on("reloadBtn", function () { call("refresh"); });
   if (label) label.addEventListener("click", function () { setZoom(1); });
 
@@ -2337,6 +2338,10 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
         "sidebarWidth": width, "docsHeight": docs_h,
     }
     base_tag = f'<base href="{html.escape(base.as_uri() + "/", quote=True)}">' if base else ""
+    # Only scripts carrying this page's nonce run. A document's own <script>
+    # or onerror= would otherwise reach window.pywebview.api.
+    import secrets
+    nonce = secrets.token_urlsafe(16)
 
     mermaid_tag = ""
     if with_mermaid:
@@ -2345,10 +2350,10 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
             src = path.as_uri()
         else:
             src = MERMAID_CDN  # last resort; works only if the machine is online
+        # The second script runs once the first has loaded or failed.
         mermaid_tag = (
-            f'<script src="{html.escape(src, quote=True)}"'
-            ' onload="window.__mdv_mermaidReady()"'
-            ' onerror="window.__mdv_mermaidReady()"></script>'
+            f'<script nonce="{nonce}" src="{html.escape(src, quote=True)}"></script>'
+            f'<script nonce="{nonce}">__mdv_mermaidReady()</script>'
         )
 
     return f"""<!doctype html>
@@ -2356,7 +2361,7 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob: https:; script-src 'unsafe-inline' file: https:; style-src 'unsafe-inline' file:; img-src file: data: blob: https:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob: https:; script-src 'nonce-{nonce}'; style-src 'unsafe-inline' file:; img-src file: data: blob: https:; object-src 'none'; frame-src 'none';">
 <title>{html.escape(title)} - {APP_NAME}</title>
 {base_tag}
 <style>{BASE_CSS}
@@ -2371,8 +2376,8 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
 {find_bar_html()}
 <div id="scroller"><div id="content">{body}</div></div>
 <div id="toast"></div>
-<script>window.__MDV__ = {json.dumps(cfg)};</script>
-<script>{VIEWER_JS}</script>
+<script nonce="{nonce}">window.__MDV__ = {json.dumps(cfg)};</script>
+<script nonce="{nonce}">{VIEWER_JS}</script>
 {mermaid_tag}
 </body>
 </html>
@@ -2959,7 +2964,7 @@ def render_welcome(style: str, tabs: list[dict] | None = None,
   <div class="glyph">&#128196;</div>
   <h1>Nothing open</h1>
   <p>Open a Markdown document, a Mermaid sketch, an SVG or an image.</p>
-  <button onclick="window.__mdv_call('pick_file')">Open file&hellip;</button>
+  <button id="pickFile">Open file&hellip;</button>
   <div class="shortcuts">
     <kbd class="hint">Ctrl</kbd>+<kbd class="hint">O</kbd> open &nbsp;&middot;&nbsp;
     <kbd class="hint">Ctrl</kbd>+<kbd class="hint">+</kbd> /
@@ -2985,7 +2990,7 @@ def render_error(title: str, message: str, style: str,
     body = (
         f'<div class="mdv-center"><div class="inner"><div class="glyph">&#9888;</div>'
         f"<h1>{html.escape(title)}</h1><p>{html.escape(message)}</p>"
-        '<button onclick="window.__mdv_call(\'pick_file\')">Open another file&hellip;</button>'
+        '<button id="pickFile">Open another file&hellip;</button>'
         "</div></div>"
     )
     return build_page(
@@ -3402,7 +3407,12 @@ class Viewer:
             else:
                 self.show(path)
             return True
-        _os_open(path)
+        # Asked every time, as a browser does for a download: the link may be
+        # a program, and the request may come from a page rather than a click.
+        if self._window is not None and self._window.create_confirmation_dialog(
+                APP_NAME, f"md-view cannot show {path.name}.\n\n"
+                          f"Open it with its default app?\n\n{path}"):
+            _os_open(path)
         return False
 
     def _raise(self) -> None:
@@ -3558,8 +3568,7 @@ class Viewer:
         if path.suffix.lower() in VIEWABLE_EXTS:
             self.open_tab(path)
             return True
-        _os_open(path)
-        return False
+        return False            # the tree lists only viewable files
 
     def toggle_csv_align(self) -> bool:
         """Alignment changes the rendered text, so the tab is rebuilt."""
