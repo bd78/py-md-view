@@ -279,8 +279,8 @@ has a saved *UserChoice*, which only you can change: right-click a file →
 | [samples/](samples/) | a demo document, a standalone sketch and an SVG |
 
 Rendered pages are written to a temp directory and loaded as `file://` URLs;
-relative image and link paths are rewritten to absolute URLs so they resolve
-from there. The directory is removed on exit.
+each page carries a `<base href>` pointing at the document's own folder, so
+relative image and link paths resolve from there. The directory is removed on exit.
 
 ## Limitations
 
