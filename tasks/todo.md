@@ -83,7 +83,7 @@ See [plan.md](plan.md). Verify command for every task:
 ## PR B, middle (starts from `main` after PR A is merged)
 
 ### Task 8: documents
-- [ ] Move `classify`, delimited text, `read_text`, `human_size`, `svg_dimensions`, `invalidate_document`,
+- [x] Move `classify`, delimited text, `read_text`, `human_size`, `svg_dimensions`, `invalidate_document`,
       `document_parts`, `_parse_document`, `_cut_note` (old L2441-2618 and L2927-3000)
 - Acceptance: as T2; the read-text, CSV and cut-note tests pass.
 - Size: M
