@@ -17,7 +17,10 @@ These apply to every agent and every session in this repository. A later section
 7. **Look for a better pull request.** Do not open a duplicate of an equal or better one.
 8. **Report only what ran.** Say what you tested and what you could not run.
 9. **`main` changes through a pull request.** Never commit or push to it. Work on a branch (`fix/…`, `feat/…`,
-   `docs/…`, `cleanup/…`). Never merge, approve or close a pull request; the person does.
+   `docs/…`, `cleanup/…`). An agent may open a pull request for its own branch and merge it with
+   `gh pr merge --merge` once all checks pass, no review thread is unresolved and there is no conflict. It never
+   approves a pull request, never closes one without the person's say-so, never bypasses a branch rule
+   (`--admin`) unless the person says so for that pull request, and stops and reports when a merge is blocked.
 10. **Stop and ask only about** licences outside the allowlist, publishing (PyPI, releases), a new remote, secrets,
     spending money, destructive git (force-push, history rewrite, deleting branches), and anything else hard to undo.
     Otherwise keep working.
