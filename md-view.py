@@ -42,7 +42,7 @@ from md_view import __version__, config, links, markdown_render, mermaid_assets,
 config.LAUNCHER = Path(__file__).resolve()   # the package looks beside it for assets/
 from md_view.config import (  # noqa: E402
     APP_NAME, CSV_COLOURS, CSV_EXTS, CSV_MAX_ROWS, DEFAULT_STYLE, FONT_LABELS, FONTS, IMAGE_EXTS,
-    MARKDOWN_EXTS, MERMAID_CDN, MERMAID_EXTS, MERMAID_SHA256, RASTER_EXTS, STYLE_BG,
+    MARKDOWN_EXTS, MERMAID_CDN, MERMAID_EXTS, RASTER_EXTS, STYLE_BG,
     STYLE_LABELS, STYLES, SVG_EXTS, VIEWABLE_EXTS, ZOOM_STEPS,
 )
 
@@ -248,7 +248,7 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
         else:
             src = MERMAID_CDN  # last resort; works only if the machine is online
             import base64
-            digest = base64.b64encode(bytes.fromhex(MERMAID_SHA256)).decode()
+            digest = base64.b64encode(bytes.fromhex(config.MERMAID_SHA256)).decode()
             integrity = f' integrity="sha256-{digest}" crossorigin="anonymous"'
         # The second script runs once the first has loaded or failed.
         mermaid_tag = (

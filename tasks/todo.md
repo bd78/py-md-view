@@ -16,7 +16,7 @@ See [plan.md](plan.md). Verify command for every task:
 - [x] Record the hand-off launch baseline and add `tests/test_startup_imports.py`: a fresh interpreter hands a
       file to a fake window and must not import `markdown`, `webview`, `pygments`, `urllib.request`, `secrets`,
       `tempfile`, `webbrowser` (`shutil` comes with `argparse`)
-- [ ] Write the `ast_compare.py` script in the scratchpad and run it: old file vs itself passes
+- [x] Write the `ast_compare.py` script in the scratchpad and run it: old file vs itself passes
 - `md_view/__init__.py` and the `conftest.py` path change move to Task 2, with the first module: alone they
   would only duplicate `__version__`.
 - Acceptance: tests green, 1 new test, nothing moved yet. Files: `tests/test_startup_imports.py`, the spec and
@@ -71,11 +71,14 @@ See [plan.md](plan.md). Verify command for every task:
 - Size: XS
 
 ### Checkpoint: PR A
-- [ ] All tests pass; `ast_compare` clean; each module imports alone; compiles on Python 3.11; the scratch-venv
+- [x] All tests pass; `ast_compare` clean; each module imports alone; compiles on Python 3.11; the scratch-venv
       `pip install .` check passes (every task PR repeats it once the package exists)
-- [ ] `agent-skills:code-reviewer` agent on the diff, findings handled
-- [ ] `pr` skill: `pr-manager` opens a draft; you mark ready; check rounds; you merge
-- [ ] Real-window check by you (open a file with a diagram, a CSV, an image; follow a link)
+- [x] `agent-skills:code-reviewer` agent on the diff (PRs #24-#30), findings handled: approve, one optional
+      point fixed (the page's mermaid `integrity` hash now reads `config.MERMAID_SHA256`, like `_mermaid_ok`)
+- [x] `pr` skill: `pr-manager` opens a draft; marked ready; check rounds; merged with `--admin` (house rule 9)
+- [x] Real-window check (2026-11-26, Windows, scratch LOCALAPPDATA, driven with evaluate_js): demo.md shows two
+      mermaid diagrams and a table, flow.mmd its diagram, sketch.svg and table.csv open as tabs. Not done: follow a
+      link, find
 
 ## PR B, middle (starts from `main` after PR A is merged)
 
