@@ -101,8 +101,9 @@ path = mermaid_assets.find_mermaid()  # a test patching mermaid_assets.find_merm
   really looks up through that module. A test that still passes after its patch is removed is a smell; the
   Plan lists those.
 - **Start-up weight:** a test records `sys.modules` after the hand-off path (`hand_off` only) and fails if it
-  imports more than it does today (no `markdown`, `pywebview`, `pygments`, `urllib.request`, `secrets`,
-  `tempfile` or `webbrowser`; `shutil` is already imported by `argparse` on Python 3.12).
+  imports any module outside `md_view` that it does not import today (no third-party module, and none of
+  `urllib`, `secrets`, `tempfile`, `webbrowser`, `csv`, `hashlib`, `ctypes`, `winreg`; `shutil` is already
+  imported by `argparse` on Python 3.12).
 - **Real-window check** (AGENTS.md): needs a desktop. Open a Markdown file with a diagram, a CSV, an SVG and an
   image; follow a link; use find; open a second file from another launch (hand-off); close.
 - The existing 62 tests keep their meaning. Only their patch targets change.
@@ -137,7 +138,7 @@ path = mermaid_assets.find_mermaid()  # a test patching mermaid_assets.find_merm
       `--fetch-assets` and `--register` work.
 - [ ] `pip install .` installs the package and the script; `md-view.py file.md` runs from Scripts.
 - [ ] The registry command written by `--register` still names `md-view.py`.
-- [ ] The hand-off launch imports no module it did not import before.
+- [ ] The hand-off launch imports no module outside `md_view` that it did not import before.
 - [ ] All modules compile on Python 3.11 (3.9 is not installed here; stated in the PR).
 - [ ] Real-window check done by the person, or reported as not done.
 - [ ] AGENTS.md ("One file" rule and the map of the code), README and the graph are updated.
