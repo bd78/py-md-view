@@ -38,7 +38,7 @@ __version__ = "1.0.0"
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from md_view import config  # noqa: E402
+from md_view import config, links  # noqa: E402
 from md_view.config import (  # noqa: E402
     APP_NAME, CSV_COLOURS, CSV_EXTS, CSV_MAX_ROWS, DEFAULT_STYLE, FONT_LABELS, FONTS, IMAGE_EXTS,
     MARKDOWN_EXTS, MERMAID_CDN, MERMAID_EXTS, MERMAID_SHA256, MERMAID_VERSION, RASTER_EXTS, STYLE_BG,
@@ -3401,19 +3401,19 @@ class Viewer:
     def open_path(self, raw: str, *, new_tab: bool = False) -> bool:
         """Open a link target: viewable files in-app, anything else via the OS."""
         base = self.current.parent if self.current else Path.cwd()
-        path = _path_from_href(raw, base)
+        path = links._path_from_href(raw, base)
         if path is None:
             return False
         # Before is_dir() or any read: a document must not make this PC sign in
         # to another computer just because the reader clicked a link.
-        if _is_network_path(path) and not (self._window is not None and self._window.create_confirmation_dialog(
+        if links._is_network_path(path) and not (self._window is not None and self._window.create_confirmation_dialog(
                 APP_NAME, f"This link reads from another computer on the network.\n"
                           f"Windows may send your sign-in to it.\n\n{path}\n\nOpen it?")):
             return False
         # On macOS a folder with an extension may be a bundle (.app, .prefPane)
         # that `open` launches, so it is asked about below like a program.
         if path.is_dir() and not (config._IS_MAC and path.suffix):
-            _os_open(path)
+            links._os_open(path)
             return False
         if path.suffix.lower() in VIEWABLE_EXTS:
             if new_tab:
@@ -3426,7 +3426,7 @@ class Viewer:
         if self._window is not None and self._window.create_confirmation_dialog(
                 APP_NAME, f"md-view cannot show {path.name}.\n\n"
                           f"Open it with its default app?\n\n{path}"):
-            _os_open(path)
+            links._os_open(path)
         return False
 
     def _raise(self) -> None:
@@ -3925,57 +3925,6 @@ def hand_off(paths: list[Path], timeout: float = 2.0) -> bool:
     except OSError:
         # Stale record: the previous instance is gone.
         return False
-
-def _path_from_href(raw: str, base: Path) -> Path | None:
-    """Resolve a possibly file://-encoded href into a local path."""
-    raw = (raw or "").strip()
-    if not raw:
-        return None
-    raw = raw.split("#", 1)[0]
-    if not raw:
-        return None
-    from urllib.parse import unquote, urlparse
-    from urllib.request import url2pathname
-    try:
-        if raw.lower().startswith("file:"):
-            parsed = urlparse(raw)
-            local = unquote(parsed.path)
-            if sys.platform == "win32" and re.match(r"^/[A-Za-z]:", local):
-                local = local[1:]
-            if parsed.netloc and sys.platform == "win32":
-                local = rf"\\{parsed.netloc}{local}"
-            return _resolve_local(Path(local))
-        return _resolve_local(base / url2pathname(raw))
-    except (OSError, ValueError):
-        return None
-
-
-def _is_network_path(path: Path) -> bool:
-    """A Windows path starting with two backslashes: touching it may make this PC sign in to another host.
-
-    That includes the device spellings \\\\.\\UNC\\host\\share and \\\\?\\UNC\\host\\share, which a
-    file:// link can produce; a local \\\\?\\C:\\ path through a link is asked about too.
-    """
-    return sys.platform == "win32" and str(path).startswith("\\\\")
-
-
-def _resolve_local(path: Path) -> Path:
-    return path if _is_network_path(path) else path.resolve()
-
-
-def _os_open(path: Path) -> None:
-    try:
-        if sys.platform == "win32":
-            os.startfile(str(path))  # noqa: S606
-        elif sys.platform == "darwin":
-            import subprocess
-            subprocess.Popen(["open", str(path)])
-        else:
-            import subprocess
-            subprocess.Popen(["xdg-open", str(path)])
-    except OSError as exc:
-        print(f"Could not open {path}: {exc}", file=sys.stderr)
-
 
 # --------------------------------------------------------------------------- #
 # Windows file associations

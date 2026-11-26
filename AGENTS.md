@@ -69,14 +69,18 @@ specification. When you change user-facing behaviour here, say so in the pull re
 - **Read-only.** md-view never writes to the documents it shows. It writes only its own data folder and temp pages.
 - **Documents are untrusted.** Raw HTML in Markdown must never run script, reach the Python bridge, navigate the
   window away from md-view's pages, or start a program without the person confirming.
-- **One file.** The app stays in `md-view.py`, so it is easy to copy and to point a registry command at.
+- **One launcher.** `md-view.py` stays the one thing people run and the registry command points at. The code is
+  moving into the `md_view/` package next to it, one module per pull request
+  ([spec/SPEC-package-split.md](spec/SPEC-package-split.md)); the launcher finds it beside itself or, after `pip
+  install .`, in site-packages.
 - **Lean start-up.** The "hand the file to the running window" launch imports almost nothing. Heavy modules are
   imported where they are used, not at the top.
 - **Dependencies** live in `requirements.txt` only. Prefer the standard library.
 
 ## Map of the code
 
-`md-view.py` is split by `# ----` banner comments, in this order: supported file types; paths, config and theme;
+`md_view/config.py` holds the file types, paths, prefs and theme; `md_view/links.py` turns links into paths and
+hands paths to the OS. The rest of `md-view.py` is split by `# ----` banner comments, in this order:
 mermaid asset management; Markdown to HTML; stylesheet (`BASE_CSS`); viewer JavaScript (`VIEWER_JS`); HTML assembly;
 per-document rendering; delimited text; sidebar trees; the application (`Viewer`, `Api`); single instance; Windows
 file associations; CLI (`main`).

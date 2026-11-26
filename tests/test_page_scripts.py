@@ -104,7 +104,7 @@ def test_only_current_generated_page_can_call_viewer_actions(mdv, monkeypatch):
 def test_tree_never_hands_files_to_the_os(mdv, tmp_path, monkeypatch):
     exe = tmp_path / "setup.exe"
     exe.write_bytes(b"MZ")
-    monkeypatch.setattr(mdv, "_os_open", lambda p: (_ for _ in ()).throw(AssertionError(p)))
+    monkeypatch.setattr(mdv.links, "_os_open", lambda p: (_ for _ in ()).throw(AssertionError(p)))
 
     class FakeViewer:
         def open_tab(self, path):
@@ -144,7 +144,7 @@ def test_macos_app_bundle_is_asked_about_not_opened(mdv, tmp_path, monkeypatch, 
     app = tmp_path / name
     app.mkdir()
     opened, asked = [], []
-    monkeypatch.setattr(mdv, "_os_open", opened.append)
+    monkeypatch.setattr(mdv.links, "_os_open", opened.append)
 
     class Window:
         def create_confirmation_dialog(self, title, message):
