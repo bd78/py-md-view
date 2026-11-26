@@ -32,8 +32,10 @@ def test_drives_are_listed_without_touching_them(mdv, monkeypatch, tmp_path):
 
     monkeypatch.setattr(Path, "is_dir", is_dir)
     mdv.trees.filesystem_roots.cache_clear()
-    assert any(r["path"] == "Q:\\" for r in mdv.trees.filesystem_roots(None))
+    roots = mdv.trees.filesystem_roots(None)
+    assert any(r["path"] == "Q:\\" for r in roots)
     assert listed
+    assert any(r["root"] == "home" and r["path"] == str(tmp_path) for r in roots)   # the home patch is in effect
     mdv.trees.filesystem_roots.cache_clear()
 
 
