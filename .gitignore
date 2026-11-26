@@ -12,3 +12,9 @@ assets/
 
 # graphify knowledge graph output, rebuilt locally
 graphify-out/
+
+# Claude Code agents, skills and settings stay local
+.claude/
+
+# editor settings stay local
+.vscode/

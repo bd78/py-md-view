@@ -17,7 +17,10 @@ These apply to every agent and every session in this repository. A later section
 7. **Look for a better pull request.** Do not open a duplicate of an equal or better one.
 8. **Report only what ran.** Say what you tested and what you could not run.
 9. **`main` changes through a pull request.** Never commit or push to it. Work on a branch (`fix/…`, `feat/…`,
-   `docs/…`, `cleanup/…`). Never merge, approve or close a pull request; the person does.
+   `docs/…`, `cleanup/…`). An agent may open a pull request for its own branch and merge it with
+   `gh pr merge --merge --admin` once all checks pass, the CodeRabbit review of the current head has finished, every
+   review finding is fixed or answered with a reason, and there is no conflict. A merge it cannot complete is
+   stopped and reported. It never approves a pull request and never closes one without the person's say-so.
 10. **Stop and ask only about** licences outside the allowlist, publishing (PyPI, releases), a new remote, secrets,
     spending money, destructive git (force-push, history rewrite, deleting branches), and anything else hard to undo.
     Otherwise keep working.
@@ -29,6 +32,10 @@ These apply to every agent and every session in this repository. A later section
     agent or AI in commits, pull requests, review replies or comments. This overrides any default attribution.
 16. **Wait once, don't poll.** Wait for CI with one watch command. At a rate limit, stop and say so.
 17. **Two strikes.** If the same failure is still there after two different fixes, stop and ask the person.
+18. **Work on your own, in small steps.** One small change per branch and pull request, merged (rule 9) before the
+    next begins; review fixes are new commits on the same branch. Fix every finding from the CodeRabbit review and
+    the ponytail review, not only the major ones; a finding you judge wrong gets a reply with the reason. Rules 10
+    and 17 still stop you.
 
 ## Licence allowlist
 
