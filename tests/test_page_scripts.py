@@ -187,3 +187,12 @@ def test_hash_links_never_fall_through_to_the_browser(mdv):
     handler = mdv.viewer_js.VIEWER_JS.split('addEventListener("click", function (e) {\n    var a = e.target.closest', 1)[1]
     handler = handler.split("});", 1)[0]
     assert handler.index("e.preventDefault()") < handler.index('charAt(0) === "#"')
+
+
+def test_document_html_cannot_borrow_the_viewer_buttons(mdv):
+    # Raw HTML may carry id="pickFile" or a toolbar id the current mode leaves out; the trusted click
+    # handlers (some call the bridge) must not attach to it.
+    js = mdv.viewer_js.VIEWER_JS
+    on = js.split("function on(id, fn, inContent) {", 1)[1].split("\n  }", 1)[0]
+    assert 'closest("#content")' in on                         # nothing inside the document is wired up
+    assert 'if (mode === "blank") on("pickFile"' in js          # md-view's own welcome and error pages only

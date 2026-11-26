@@ -1185,16 +1185,18 @@ VIEWER_JS = r"""
   /* wire up the toolbar                                                */
   /* ------------------------------------------------------------------ */
 
-  function on(id, fn) {
+  function on(id, fn, inContent) {
+    // getElementById returns the first match: a document could plant an id the toolbar lacks in this mode.
     var el = document.getElementById(id);
-    if (el) el.addEventListener("click", fn);
+    if (el && (inContent || !el.closest("#content"))) el.addEventListener("click", fn);
   }
   on("zoomIn", function () { step(+1); });
   on("zoomOut", function () { step(-1); });
   on("fitBtn", doFit);
   on("backBtn", function () { call("go_back"); });
   on("openBtn", function () { call("pick_file"); });
-  on("pickFile", function () { call("pick_file"); });
+  // The welcome and error pages (mode "blank") are md-view's own markup; elsewhere #content is the document.
+  if (mode === "blank") on("pickFile", function () { call("pick_file"); }, true);
   on("reloadBtn", function () { call("refresh"); });
   if (label) label.addEventListener("click", function () { setZoom(1); });
 
