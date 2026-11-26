@@ -66,7 +66,7 @@ See [plan.md](plan.md). Verify command for every task:
 - Size: XS
 
 ### Task 7: viewer_js
-- [ ] Move `VIEWER_JS` to `md_view/viewer_js.py`
+- [x] Move `VIEWER_JS` to `md_view/viewer_js.py`
 - Acceptance: as T2; `test_page_scripts.py` passes (it reads `VIEWER_JS`).
 - Size: XS
 

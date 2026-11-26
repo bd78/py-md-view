@@ -23,6 +23,7 @@ def test_only_md_view_scripts_carry_the_nonce(mdv):
     assert "'unsafe-inline'" not in script_src
     # config, viewer, mermaid loader and its ready call -- and nothing else
     assert page.count(f'nonce="{nonce}"') == 4
+    assert f'<script nonce="{nonce}">{mdv.viewer_js.VIEWER_JS}</script>' in page   # the viewer runs, whole
     assert "<script>evil()</script>" in page          # present, but blocked by CSP
 
 
@@ -183,6 +184,6 @@ def test_document_path_cannot_close_the_config_script(mdv):
 def test_hash_links_never_fall_through_to_the_browser(mdv):
     # <base> makes a bare "#x" (even one written as &#35;x) point at the folder,
     # so the click handler must cancel it and scroll in page itself.
-    handler = mdv.VIEWER_JS.split('addEventListener("click", function (e) {\n    var a = e.target.closest', 1)[1]
+    handler = mdv.viewer_js.VIEWER_JS.split('addEventListener("click", function (e) {\n    var a = e.target.closest', 1)[1]
     handler = handler.split("});", 1)[0]
     assert handler.index("e.preventDefault()") < handler.index('charAt(0) === "#"')
