@@ -3490,6 +3490,12 @@ class Viewer:
         path = _path_from_href(raw, base)
         if path is None:
             return False
+        # Before is_dir() or any read: a document must not make this PC sign in
+        # to another computer just because the reader clicked a link.
+        if _is_network_path(path) and not (self._window is not None and self._window.create_confirmation_dialog(
+                APP_NAME, f"This link reads from another computer on the network.\n"
+                          f"Windows may send your sign-in to it.\n\n{path}\n\nOpen it?")):
+            return False
         # On macOS a folder with an extension may be a bundle (.app, .prefPane)
         # that `open` launches, so it is asked about below like a program.
         if path.is_dir() and not (_IS_MAC and path.suffix):
@@ -4024,10 +4030,23 @@ def _path_from_href(raw: str, base: Path) -> Path | None:
                 local = local[1:]
             if parsed.netloc and sys.platform == "win32":
                 local = rf"\\{parsed.netloc}{local}"
-            return Path(local).resolve()
-        return (base / url2pathname(raw)).resolve()
+            return _resolve_local(Path(local))
+        return _resolve_local(base / url2pathname(raw))
     except (OSError, ValueError):
         return None
+
+
+def _is_network_path(path: Path) -> bool:
+    """A Windows path starting with two backslashes: touching it may make this PC sign in to another host.
+
+    That includes the device spellings \\\\.\\UNC\\host\\share and \\\\?\\UNC\\host\\share, which a
+    file:// link can produce; a local \\\\?\\C:\\ path through a link is asked about too.
+    """
+    return sys.platform == "win32" and str(path).startswith("\\\\")
+
+
+def _resolve_local(path: Path) -> Path:
+    return path if _is_network_path(path) else path.resolve()
 
 
 def _os_open(path: Path) -> None:

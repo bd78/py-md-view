@@ -113,6 +113,32 @@ def test_tree_never_hands_files_to_the_os(mdv, tmp_path, monkeypatch):
     assert mdv.Viewer.open_from_tree(FakeViewer(), str(exe)) is False
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="network shares are Windows paths here")
+@pytest.mark.parametrize("href", ["file://zeus/share/a.md", "file://./UNC/zeus/share/a.md"])
+def test_network_share_link_asks_before_any_access(mdv, monkeypatch, href):
+    asked, shown, touched = [], [], []
+
+    class Window:
+        answer = False
+
+        def create_confirmation_dialog(self, title, message):
+            asked.append(message)
+            return Window.answer
+
+    viewer = SimpleNamespace(current=None, _window=Window(), show=shown.append)
+    # resolve() and is_dir() on a share make this PC sign in to that host.
+    monkeypatch.setattr(mdv.Path, "resolve", lambda self, *a, **k: touched.append(self) or self)
+    monkeypatch.setattr(mdv.Path, "is_dir", lambda self, *a, **k: touched.append(self) or False)
+
+    assert mdv.Viewer.open_path(viewer, href) is False
+    assert asked and "zeus" in asked[0]
+    assert not touched and not shown                    # declined: nothing was reached
+
+    Window.answer = True
+    assert mdv.Viewer.open_path(viewer, href) is True
+    assert len(shown) == 1
+
+
 @pytest.mark.parametrize("name", ["Evil.app", "Evil.APP"])
 def test_macos_app_bundle_is_asked_about_not_opened(mdv, tmp_path, monkeypatch, name):
     app = tmp_path / name
