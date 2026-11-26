@@ -192,7 +192,14 @@ def test_hash_links_never_fall_through_to_the_browser(mdv):
 def test_document_html_cannot_borrow_the_viewer_buttons(mdv):
     # Raw HTML may carry id="pickFile" or a toolbar id the current mode leaves out; the trusted click
     # handlers (some call the bridge) must not attach to it.
+    # Wiring checks node identity against md-view's own roots: a document can close #content with
+    # "</div>" and plant any id or class, so a selector or "not inside #content" test is not enough.
     js = mdv.viewer_js.VIEWER_JS
     on = js.split("function on(id, fn, inContent) {", 1)[1].split("\n  }", 1)[0]
-    assert 'closest("#content")' in on                         # nothing inside the document is wired up
+    assert "if (el && trusted(el, inContent)) el.addEventListener" in on
+    assert "return TRUSTED.some(function (root) { return root.contains(el); }) ||" in js
+    assert 'BAR.querySelectorAll(".menu")' in js            # menus that act (set_font, ...) come from the bar only
+    assert 'forEach.call(document.querySelectorAll(".menu"), function (menuEl)' not in js
     assert 'if (mode === "blank") on("pickFile"' in js          # md-view's own welcome and error pages only
+    # on() runs early (revealBtn); the roots it reads must already exist, or the whole script throws on load.
+    assert js.index("var TRUSTED") < js.index('on("')

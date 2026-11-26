@@ -21,6 +21,18 @@ VIEWER_JS = r"""
   var label    = document.getElementById("zoomLabel");
   var toastEl  = document.getElementById("toast");
   var mode     = CFG.mode;                 // doc | mermaid | image | blank
+
+  // md-view's own controls live in these roots, which come before the document in the page, so
+  // getElementById finds the real ones. A document can close #content early with "</div>" and plant
+  // a copy of any id or class, so wiring checks node identity, never a selector match.
+  var TRUSTED = ["bar", "sidebar", "findbar"].map(function (id) { return document.getElementById(id); })
+    .filter(Boolean);
+  var CONTENT = document.getElementById("content");
+  function trusted(el, inContent) {
+    return TRUSTED.some(function (root) { return root.contains(el); }) ||
+      (!!inContent && !!CONTENT && CONTENT.contains(el));
+  }
+  var BAR = document.getElementById("bar");
   var zoom     = CFG.zoom || 1;
   var fitMode  = mode === "image" && CFG.fit !== false;
   var natural  = { w: 0, h: 0 };
@@ -1027,14 +1039,14 @@ VIEWER_JS = r"""
     else if (kind === "font") applyFont(value);
   }
 
-  Array.prototype.forEach.call(document.querySelectorAll("[data-menu]"), function (btn) {
+  Array.prototype.forEach.call(BAR ? BAR.querySelectorAll("[data-menu]") : [], function (btn) {
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
       openMenu(document.getElementById(btn.dataset.menu));
     });
   });
 
-  Array.prototype.forEach.call(document.querySelectorAll(".menu"), function (menuEl) {
+  Array.prototype.forEach.call(BAR ? BAR.querySelectorAll(".menu") : [], function (menuEl) {
     menuEl.addEventListener("click", function (e) {
       var b = e.target.closest("button[data-value]");
       if (!b) return;
@@ -1188,7 +1200,7 @@ VIEWER_JS = r"""
   function on(id, fn, inContent) {
     // getElementById returns the first match: a document could plant an id the toolbar lacks in this mode.
     var el = document.getElementById(id);
-    if (el && (inContent || !el.closest("#content"))) el.addEventListener("click", fn);
+    if (el && trusted(el, inContent)) el.addEventListener("click", fn);
   }
   on("zoomIn", function () { step(+1); });
   on("zoomOut", function () { step(-1); });
