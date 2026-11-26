@@ -33,127 +33,17 @@ from pathlib import Path
 # "hand the file to the running window" launch needs none of them.
 
 __version__ = "1.0.0"
-APP_NAME = "md-view"
 
-# --------------------------------------------------------------------------- #
-# Supported file types
-# --------------------------------------------------------------------------- #
+# The md_view package sits next to this launcher (in the repo, or in site-packages after `pip install .`).
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-MARKDOWN_EXTS = {".md", ".markdown", ".mdown", ".mkd", ".mkdn", ".mdtext"}
-MERMAID_EXTS = {".mmd", ".mermaid"}
-RASTER_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".apng", ".avif"}
-SVG_EXTS = {".svg", ".svgz"}
-CSV_EXTS = {".csv", ".tsv", ".tab"}
-TEXT_EXTS = {".txt", ".text", ".log", ".rst", ".json", ".yml", ".yaml", ".toml", ".ini"}
-
-IMAGE_EXTS = RASTER_EXTS | SVG_EXTS
-VIEWABLE_EXTS = MARKDOWN_EXTS | MERMAID_EXTS | IMAGE_EXTS | CSV_EXTS | TEXT_EXTS
-
-# Pinned and checked: this script runs in a page that can call into Python.
-# To upgrade, change both values (sha256 of dist/mermaid.min.js, as served).
-MERMAID_VERSION = "11.17.2"
-MERMAID_SHA256 = "581ed7d74bd9048d0e3a91363927d72ef22942d7722546b27f7cc29e35390eb8"
-MERMAID_CDN = f"https://cdn.jsdelivr.net/npm/mermaid@{MERMAID_VERSION}/dist/mermaid.min.js"
-
-ZOOM_STEPS = (0.25, 0.33, 0.50, 0.67, 0.75, 0.90, 1.00,
-              1.10, 1.25, 1.50, 1.75, 2.00, 2.50, 3.00, 4.00, 5.00)
-
-# Presentation styles. Each one is a full look: palette, syntax colours,
-# mermaid theme and type stack.
-STYLES = ("light", "dark", "github", "github-ext")
-STYLE_LABELS = {"light": "Light", "dark": "Dark", "github": "GitHub",
-                "github-ext": "GitHub Ext"}
-STYLE_BG = {"light": "#fcfcfd", "dark": "#0d1117", "github": "#ffffff",
-            "github-ext": "#ffffff"}
-# GitHub's look, with tables allowed to grow past the text column.
-DEFAULT_STYLE = "github-ext"
-# Pygments styles, in order of preference per look.
-STYLE_PYGMENTS = {
-    "light": ("friendly", "default"),
-    "dark": ("github-dark", "monokai", "native"),
-    "github": ("github-light", "default"),
-    "github-ext": ("github-light", "default"),
-}
-
-# Body typeface. "system" keeps whatever the chosen style specifies.
-FONTS = ("system", "sans", "serif", "mono")
-FONT_LABELS = {"system": "System", "sans": "Sans", "serif": "Serif", "mono": "Monospace"}
-
-# Rainbow CSV: one colour per column, cycling.
-CSV_COLOURS = 10
-CSV_MAX_ROWS = 5000
-
-
-# --------------------------------------------------------------------------- #
-# Paths, config, theme
-# --------------------------------------------------------------------------- #
-
-def data_dir() -> Path:
-    """Per-user directory for cached assets and preferences."""
-    if sys.platform == "win32":
-        root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-    elif sys.platform == "darwin":
-        root = Path.home() / "Library" / "Application Support"
-    else:
-        root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-    d = root / APP_NAME
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-def assets_dir() -> Path:
-    d = data_dir() / "assets"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-PREFS_PATH = None  # resolved lazily so --help never touches the disk
-
-
-def load_prefs() -> dict:
-    global PREFS_PATH
-    PREFS_PATH = data_dir() / "prefs.json"
-    try:
-        return json.loads(PREFS_PATH.read_text("utf-8"))
-    except Exception:
-        return {}
-
-
-_PREFS_LOCK = threading.Lock()
-
-
-def save_prefs(prefs: dict) -> None:
-    """Write via a temp file and a rename, so a crash or a second writer never
-    leaves a half-written prefs.json (which would silently reset every setting)."""
-    path = PREFS_PATH or data_dir() / "prefs.json"
-    tmp = path.with_name(f"prefs.{os.getpid()}.tmp")
-    with _PREFS_LOCK:       # bridge calls persist from several threads; cleanup stays inside so it cannot delete another thread's staged file
-        try:
-            tmp.write_text(json.dumps(prefs, indent=2), "utf-8")
-            os.replace(tmp, path)
-        except Exception:
-            try:
-                tmp.unlink(missing_ok=True)
-            except OSError:
-                pass
-            # preferences are a convenience, never a failure mode
-
-
-def resolve_style(requested: str | None, prefs: dict) -> str:
-    """Pick a style: explicit flag, then the remembered one, then the default.
-
-    A remembered style only counts once it was chosen while DEFAULT_STYLE was
-    the default: prefs saved by an older version are moved onto the new
-    default once, and any choice made after that sticks.
-    """
-    if requested in STYLES:
-        return requested
-    if prefs.get("style_default") == DEFAULT_STYLE:
-        for candidate in (prefs.get("style"), prefs.get("theme")):
-            if candidate in STYLES:
-                return candidate
-    return DEFAULT_STYLE
-
+from md_view import config  # noqa: E402
+from md_view.config import (  # noqa: E402
+    APP_NAME, CSV_COLOURS, CSV_EXTS, CSV_MAX_ROWS, DEFAULT_STYLE, FONT_LABELS, FONTS, IMAGE_EXTS,
+    MARKDOWN_EXTS, MERMAID_CDN, MERMAID_EXTS, MERMAID_SHA256, MERMAID_VERSION, RASTER_EXTS, STYLE_BG,
+    STYLE_LABELS, STYLE_PYGMENTS, STYLES, SVG_EXTS, VIEWABLE_EXTS, ZOOM_STEPS,
+)
 
 # --------------------------------------------------------------------------- #
 # Mermaid asset management
@@ -172,7 +62,7 @@ def _mermaid_ok(data: bytes) -> bool:
 
 def cached_mermaid() -> Path | None:
     """The verified download. Named by version, so an older, unchecked cache never counts."""
-    p = assets_dir() / f"mermaid-{MERMAID_VERSION}.min.js"
+    p = config.assets_dir() / f"mermaid-{MERMAID_VERSION}.min.js"
     try:
         if p.is_file() and _mermaid_ok(p.read_bytes()):
             return p
@@ -180,7 +70,7 @@ def cached_mermaid() -> Path | None:
         pass
     # Adopt a cache from before pinning when it is exactly this release, so an
     # offline machine keeps its diagrams.
-    legacy = assets_dir() / "mermaid.min.js"
+    legacy = config.assets_dir() / "mermaid.min.js"
     try:
         if legacy.is_file() and _mermaid_ok(legacy.read_bytes()):
             legacy.replace(p)
@@ -203,7 +93,7 @@ def fetch_mermaid(force: bool = False, timeout: int = 60, quiet: bool = False) -
     import urllib.error
     import urllib.request
 
-    target = assets_dir() / f"mermaid-{MERMAID_VERSION}.min.js"
+    target = config.assets_dir() / f"mermaid-{MERMAID_VERSION}.min.js"
     tmp = target.with_suffix(".part")
     try:
         if not quiet:
@@ -2641,20 +2531,17 @@ TREE_CHILD_LIMIT = 500   # a directory listing this long is already unreadable
 TREE_MAX_DEPTH = 24
 
 
-_WIN_HIDDEN_ATTRS = 0x2 | 0x4   # FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM
-_IS_WINDOWS = sys.platform == "win32"
-_IS_MAC = sys.platform == "darwin"
 
 
 def _is_hidden(entry: os.DirEntry) -> bool:
     """Skip dot-files and, on Windows, hidden/system entries."""
     if entry.name.startswith("."):
         return True
-    if _IS_WINDOWS:
+    if config._IS_WINDOWS:
         try:
             # scandir already fetched the attributes on Windows: no extra syscall.
             return bool(entry.stat(follow_symlinks=False).st_file_attributes
-                        & _WIN_HIDDEN_ATTRS)
+                        & config._WIN_HIDDEN_ATTRS)
         except (OSError, AttributeError):
             return False
     return False
@@ -3165,7 +3052,7 @@ class Viewer:
         import webview  # imported here so --register works without a GUI stack
 
         self.webview = webview
-        self.prefs = load_prefs()
+        self.prefs = config.load_prefs()
         self.style = style
         self.font = font if font in FONTS else "system"
         self.csv_align = bool(self.prefs.get("csv_align", False))
@@ -3525,7 +3412,7 @@ class Viewer:
             return False
         # On macOS a folder with an extension may be a bundle (.app, .prefPane)
         # that `open` launches, so it is asked about below like a program.
-        if path.is_dir() and not (_IS_MAC and path.suffix):
+        if path.is_dir() and not (config._IS_MAC and path.suffix):
             _os_open(path)
             return False
         if path.suffix.lower() in VIEWABLE_EXTS:
@@ -3667,7 +3554,7 @@ class Viewer:
             "expanded": sorted(list(self.expanded)[:400]),
             "doc_collapsed": sorted(str(p) for p in list(self.doc_collapsed)[:200]),
         })
-        save_prefs(self.prefs)
+        config.save_prefs(self.prefs)
 
     # -- sidebar ----------------------------------------------------------- #
 
@@ -3985,7 +3872,7 @@ class InstanceServer:
 
 
 def instance_file() -> Path:
-    return data_dir() / "instance.json"
+    return config.data_dir() / "instance.json"
 
 
 def instance_lock():
@@ -3997,7 +3884,7 @@ def instance_lock():
     stale. The returned handle must stay referenced while the window is open.
     """
     try:
-        handle = open(data_dir() / "instance.lock", "a+b")
+        handle = open(config.data_dir() / "instance.lock", "a+b")
     except OSError:
         return True     # no lock file possible: every launch may own a window, as before
     try:
@@ -4301,8 +4188,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.fetch_assets:
         return 0 if fetch_mermaid(force=args.force) else 1
 
-    prefs = load_prefs()
-    style = resolve_style(args.style, prefs)
+    prefs = config.load_prefs()
+    style = config.resolve_style(args.style, prefs)
     font = args.font or prefs.get("font") or "system"
     if font not in FONTS:
         font = "system"

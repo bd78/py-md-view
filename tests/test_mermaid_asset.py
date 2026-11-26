@@ -11,10 +11,10 @@ GOOD = b"/* mermaid */" * 10_000
 
 @pytest.fixture
 def cache(mdv, tmp_path, monkeypatch):
-    monkeypatch.setattr(mdv, "data_dir", lambda: tmp_path)
+    monkeypatch.setattr(mdv.config, "data_dir", lambda: tmp_path)
     monkeypatch.setattr(mdv, "MERMAID_SHA256", hashlib.sha256(GOOD).hexdigest())
     monkeypatch.setattr(mdv, "vendored_mermaid", lambda: None)
-    return mdv.assets_dir()
+    return mdv.config.assets_dir()
 
 
 def serve(monkeypatch, payload):

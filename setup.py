@@ -52,6 +52,7 @@ setup(
     # md-view.py is a script, not an importable module (the hyphen is deliberate:
     # it reads well on a command line and in a registry command string).
     scripts=["md-view.py"],
+    packages=["md_view"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Environment :: Win32 (MS Windows)",

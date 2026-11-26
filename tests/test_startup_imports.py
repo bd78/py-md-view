@@ -38,7 +38,7 @@ loaded = set(sys.modules)
 server = socket.socket()
 server.bind(("127.0.0.1", 0))
 server.listen(1)
-(mdv.data_dir() / "instance.json").write_text(
+(mdv.config.data_dir() / "instance.json").write_text(
     json.dumps({"port": server.getsockname()[1], "token": "t", "pid": 0}), "utf-8")
 
 def answer():
