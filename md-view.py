@@ -2549,17 +2549,33 @@ def render_delimited(rows: list[list[str]], delimiter: str, *,
     return f'{info}<pre class="csv">{"".join(lines)}</pre>{note}'
 
 
+# shortcut: one fixed cap; the page, not the read, is what breaks on a huge file.
+# Make it a preference if people hit it.
+MAX_TEXT_BYTES = 5 * 1024 * 1024
+
+
 def read_text(path: Path) -> str:
-    data = path.read_bytes()
+    import codecs
+
+    with path.open("rb") as f:
+        data = f.read(MAX_TEXT_BYTES + 1)
+    cut = len(data) > MAX_TEXT_BYTES
+    data = data[:MAX_TEXT_BYTES]
+
+    def decode(encoding: str, errors: str = "strict") -> str:
+        # final=False holds back a character the cut split in two, instead of
+        # failing the whole prefix and falling through to another encoding.
+        return codecs.getincrementaldecoder(encoding)(errors).decode(data, final=not cut)
+
     if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
         # UTF-16 with a BOM: what Windows PowerShell 5 writes for "cmd > out.txt".
-        return data.decode("utf-16", errors="replace")
+        return decode("utf-16", "replace")
     for encoding in ("utf-8-sig", "cp1252"):   # utf-8-sig also reads BOM-less UTF-8
         try:
-            return data.decode(encoding)
+            return decode(encoding)
         except UnicodeDecodeError:
             continue
-    return data.decode("latin-1")               # never fails: every byte is a character
+    return decode("latin-1")                    # never fails: every byte is a character
 
 
 def human_size(n: int) -> str:
@@ -2955,6 +2971,15 @@ def document_parts(path: Path, *, csv_align: bool = False) -> dict:
     return parts
 
 
+def _cut_note(path: Path) -> str:
+    """Says so when read_text showed only the start of the file."""
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return ""
+    return f"first {human_size(MAX_TEXT_BYTES)} of {human_size(size)}" if size > MAX_TEXT_BYTES else ""
+
+
 def _parse_document(path: Path, *, csv_align: bool = False) -> dict:
     """The expensive half of rendering: read the file and produce a body."""
     kind = classify(path)
@@ -2962,11 +2987,11 @@ def _parse_document(path: Path, *, csv_align: bool = False) -> dict:
     if kind == "markdown":
         # Relative src/href resolve through the page's <base>, set to path.parent.
         body = render_markdown(read_text(path))[0]
-        return {"body": body, "mode": "doc", "subtitle": "", "base": path.parent,
+        return {"body": body, "mode": "doc", "subtitle": _cut_note(path), "base": path.parent,
                 "with_mermaid": 'class="mermaid"' in body, "vector": False, "view_box": None}
 
     if kind == "mermaid":
-        return {"body": mermaid_block(read_text(path)), "mode": "mermaid", "subtitle": "",
+        return {"body": mermaid_block(read_text(path)), "mode": "mermaid", "subtitle": _cut_note(path),
                 "base": path.parent, "with_mermaid": True, "vector": False, "view_box": None}
 
     if kind in ("svg", "raster"):
@@ -2990,12 +3015,12 @@ def _parse_document(path: Path, *, csv_align: bool = False) -> dict:
         body = render_delimited(rows, delimiter, aligned=csv_align, truncated=truncated)
         columns = max((len(r) for r in rows), default=0)
         return {"body": body, "mode": "doc", "base": path.parent,
-                "subtitle": f"{len(rows):,} × {columns}",
+                "subtitle": " · ".join(filter(None, (f"{len(rows):,} × {columns}", _cut_note(path)))),
                 "with_mermaid": False, "vector": False, "view_box": None, "csv": True}
 
     # plain text / unknown: show it verbatim rather than guessing
     return {"body": f"<pre><code>{html.escape(read_text(path))}</code></pre>",
-            "mode": "doc", "subtitle": "", "base": path.parent,
+            "mode": "doc", "subtitle": _cut_note(path), "base": path.parent,
             "with_mermaid": False, "vector": False, "view_box": None}
 
 
