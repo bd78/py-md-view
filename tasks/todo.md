@@ -55,7 +55,7 @@ See [plan.md](plan.md). Verify command for every task:
 - Size: M
 
 ### Task 5: markdown_render
-- [ ] Move `MERMAID_FENCE`, `CODE_FENCE`, `RAW_HTML_OPEN`, `_build_mermaid_extension`, `mermaid_block`,
+- [x] Move `MERMAID_FENCE`, `CODE_FENCE`, `RAW_HTML_OPEN`, `_build_mermaid_extension`, `mermaid_block`,
       `_task_lists`, `RAW_META`, `_markdown_module`, `render_markdown`
 - Acceptance: as T2; the 8 mermaid-fence tests and the `RAW_META` test pass.
 - Size: S
@@ -126,6 +126,8 @@ See [plan.md](plan.md). Verify command for every task:
 - [ ] `setup.py`: read the version from `md_view/__init__.py` (`packages` is already set since Task 2), keep the script;
       check `MANIFEST.in`, `run.ps1`, `run.bat`
 - [ ] Scratch venv: `pip install .`, run `md-view.py --help` from another directory
+- [ ] `tests/test_startup_imports.py`: the hand-off imports none of `md_view.app`, `page`, `markdown_render`,
+      `styles`, `viewer_js` (only true once the launcher no longer imports them at the top)
 - Acceptance: all success criteria in the spec's list for launch, install and registry.
 - Size: M
 
