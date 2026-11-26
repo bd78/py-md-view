@@ -52,13 +52,13 @@ def test_aligned_columns_are_padded_to_the_widest_field(mdv):
 
 @pytest.mark.skipif(sys.platform != "win32", reason="drive-letter URLs")
 def test_file_url_with_drive_and_escapes(mdv):
-    path = mdv._path_from_href("file:///C:/My%20Docs/notes.md#part", Path("D:/x"))
+    path = mdv.links._path_from_href("file:///C:/My%20Docs/notes.md#part", Path("D:/x"))
     assert path == Path("C:/My Docs/notes.md")
 
 
 def test_relative_href_resolves_from_the_document(mdv, tmp_path):
-    assert mdv._path_from_href("sub/a%20b.md", tmp_path) == (tmp_path / "sub" / "a b.md").resolve()
-    assert mdv._path_from_href("#only-a-fragment", tmp_path) is None
+    assert mdv.links._path_from_href("sub/a%20b.md", tmp_path) == (tmp_path / "sub" / "a b.md").resolve()
+    assert mdv.links._path_from_href("#only-a-fragment", tmp_path) is None
 
 
 # --- preferences ------------------------------------------------------------

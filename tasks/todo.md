@@ -38,7 +38,7 @@ See [plan.md](plan.md). Verify command for every task:
 - Size: M (config, md-view.py, setup.py, ~3 test files)
 
 ### Task 3: links
-- [ ] Move `_path_from_href`, `_is_network_path`, `_resolve_local`, `_os_open` (old L4015-4055) to
+- [x] Move `_path_from_href`, `_is_network_path`, `_resolve_local`, `_os_open` (old L4015-4055) to
       `md_view/links.py`; retarget the `_os_open` patches
 - Acceptance: as T2; the network-share and app-bundle tests pass unchanged apart from the patch target.
 - Size: S
