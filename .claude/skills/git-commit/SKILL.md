@@ -5,8 +5,8 @@ description: Commit md-view (py-md-view) changes safely. Runs CodeRabbit review 
 
 # Git commit (with CodeRabbit review loop)
 
-Commit the current work only after CodeRabbit reports no findings on the uncommitted changes and the local checks
-pass. This repository has no CI workflow: the local checks are the gate.
+Commit the current work only after both reviews report no findings on the uncommitted changes (other than verified,
+documented false positives, step 3) and the local checks pass. This repository has no CI workflow: the local checks are the gate.
 
 ## 0. Stop conditions (check first)
 
@@ -52,7 +52,8 @@ If either review has any finding (major or minor):
    - the rule to follow `CLAUDE.md` and `AGENTS.md`;
    - the instruction not to commit and not to push.
 2. When the agent reports back, review its diff yourself (`git diff`) for unrelated changes before accepting it.
-3. Run both reviews again (step 2). Repeat until neither reports a finding.
+3. Re-stage the commit's paths (`git add <path> …`), so the fixes are in the index, then run both reviews again
+   (step 2). Repeat until neither reports a finding other than a verified false positive (below).
 
 Loop guard: if the same finding comes back after two fix rounds (house rule 17), stop: do not run the local checks
 and do not commit; report the finding and what was tried. A finding you verify as a false positive is not fixed:

@@ -62,7 +62,9 @@ the checks (CodeRabbit, SonarCloud) and reports `clean`, `needs fixes`, `again` 
 ## 4. The process, draft then ready
 
 1. Open the PR as a draft (step 2).
-2. Run check rounds (step 3) until one is `clean` on the current head.
+2. Run check rounds (step 3) until one is `clean` on the current head. CodeRabbit does not review drafts, so a
+   draft round is `clean` on green checks (SonarCloud), every thread fixed or answered with a reason, and no
+   conflict.
 3. Mark it ready, if it is still a draft: `gh pr ready <N> --repo bd78/py-md-view`. Marking it ready makes
    CodeRabbit review again.
 4. Run check rounds again until one is `clean` on the current head. `pr-manager` counts only a review that started

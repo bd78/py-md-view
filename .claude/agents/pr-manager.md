@@ -64,7 +64,9 @@ to change (with the reason).
    minutes; past that, say which check never finished). If no check started, say so and report what you have. Then
    read their output for the **head SHA**:
    - CodeRabbit: its review on the head commit and new unresolved threads (step 4). If CodeRabbit is still writing
-     its review after the check finished, say so rather than reporting "no findings".
+     its review after the check finished, say so rather than reporting "no findings". A draft gets no CodeRabbit
+     review: on a draft, `clean` needs only green checks, every thread
+     fixed or answered with a reason (step 1), and no conflict.
    - SonarCloud: the `sonarqubecloud` bot's latest PR comment (quality gate, new issues, coverage, duplication) from
      `gh pr view <N> --repo bd78/py-md-view --comments`.
    - Filter JSON with `gh`'s own `-q` / `--jq`; do not rely on `jq` being installed.
