@@ -2414,7 +2414,7 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob: https:; script-src 'nonce-{nonce}'; style-src 'unsafe-inline' file:; img-src file: data: blob: https:; object-src 'none'; frame-src 'none';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob: https:; script-src 'nonce-{nonce}'; style-src 'unsafe-inline' file:; img-src file: data: blob: https:; object-src 'none'; frame-src 'none'; form-action 'none';">
 <title>{html.escape(title)} - {APP_NAME}</title>
 {base_tag}
 <style>{BASE_CSS}

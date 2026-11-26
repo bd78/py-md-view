@@ -26,6 +26,14 @@ def test_only_md_view_scripts_carry_the_nonce(mdv):
     assert "<script>evil()</script>" in page          # present, but blocked by CSP
 
 
+def test_a_document_form_cannot_navigate_the_window(mdv):
+    page = mdv.build_page(body='<form action="https://evil.example"><button>x</button></form>',
+                          title="t", mode="doc", style="github", zoom=1.0, fit=False,
+                          scroll=0.0, base=None, can_go_back=False, with_mermaid=False)
+    csp = re.search(r'Content-Security-Policy" content="([^"]+)"', page).group(1)
+    assert "form-action 'none'" in csp
+
+
 def test_welcome_and_error_pages_have_no_inline_handlers(mdv):
     for page in (mdv.render_welcome("github"), mdv.render_error("x", "y", "github")):
         assert "onclick=" not in page
