@@ -24,27 +24,27 @@ def test_task_lists_become_checkboxes(mdv):
 # --- delimited files --------------------------------------------------------
 
 def test_quoted_fields_keep_delimiters_and_newlines(mdv):
-    rows, delimiter, truncated = mdv.parse_delimited('a,b\n"x, y","line1\nline2"\n', ".csv")
+    rows, delimiter, truncated = mdv.documents.parse_delimited('a,b\n"x, y","line1\nline2"\n', ".csv")
     assert delimiter == ","
     assert rows == [["a", "b"], ["x, y", "line1\nline2"]]
     assert not truncated
 
 
 def test_semicolons_are_sniffed_and_tsv_is_always_tab(mdv):
-    assert mdv.parse_delimited("a;b;c\n1;2;3\n", ".csv")[1] == ";"
-    assert mdv.parse_delimited("a,b\tc\n", ".tsv")[1] == "\t"
+    assert mdv.documents.parse_delimited("a;b;c\n1;2;3\n", ".csv")[1] == ";"
+    assert mdv.documents.parse_delimited("a,b\tc\n", ".tsv")[1] == "\t"
 
 
 def test_long_files_are_cut_and_say_so(mdv):
-    text = "n\n" + "1\n" * (mdv.CSV_MAX_ROWS + 10)
-    rows, _, truncated = mdv.parse_delimited(text, ".csv")
-    assert len(rows) == mdv.CSV_MAX_ROWS and truncated
-    html = mdv.render_delimited(rows, ",", aligned=False, truncated=True)
+    text = "n\n" + "1\n" * (mdv.config.CSV_MAX_ROWS + 10)
+    rows, _, truncated = mdv.documents.parse_delimited(text, ".csv")
+    assert len(rows) == mdv.config.CSV_MAX_ROWS and truncated
+    html = mdv.documents.render_delimited(rows, ",", aligned=False, truncated=True)
     assert "Showing the first" in html
 
 
 def test_aligned_columns_are_padded_to_the_widest_field(mdv):
-    html = mdv.render_delimited([["a", "b"], ["long", "c"]], ",", aligned=True, truncated=False)
+    html = mdv.documents.render_delimited([["a", "b"], ["long", "c"]], ",", aligned=True, truncated=False)
     assert '<span class="c0">a&nbsp;&nbsp;&nbsp;</span>' in html
 
 
@@ -94,6 +94,6 @@ def test_open_documents_tree_folds_single_folder_chains(mdv, tmp_path):
 def test_svg_without_size_uses_its_viewbox(mdv, tmp_path):
     svg = tmp_path / "s.svg"
     svg.write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480"></svg>', "utf-8")
-    assert mdv.svg_dimensions(svg) == (640.0, 480.0)
+    assert mdv.documents.svg_dimensions(svg) == (640.0, 480.0)
     svg.write_text('<svg width="10px" height="20" viewBox="0 0 640 480"></svg>', "utf-8")
-    assert mdv.svg_dimensions(svg) is None
+    assert mdv.documents.svg_dimensions(svg) is None
