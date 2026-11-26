@@ -49,3 +49,10 @@ def test_cut_inside_a_character_keeps_the_encoding(mdv, tmp_path, monkeypatch):
     utf16 = tmp_path / "out.log"
     utf16.write_bytes(("A\n" * 200).encode("utf-16"))       # BOM + little-endian code units
     assert "�" not in mdv.read_text(utf16)
+
+
+@pytest.mark.parametrize("data", [b"\xef", b"\xef\xbb"])
+def test_partial_bom_file_is_shown_not_swallowed(mdv, tmp_path, data):
+    path = tmp_path / "x.txt"
+    path.write_bytes(data)
+    assert mdv.read_text(path) == data.decode("cp1252")

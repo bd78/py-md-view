@@ -2563,9 +2563,11 @@ def read_text(path: Path) -> str:
     data = data[:MAX_TEXT_BYTES]
 
     def decode(encoding: str, errors: str = "strict") -> str:
+        if not cut:
+            return data.decode(encoding, errors)    # a lone b"\xef" must still fall to cp1252
         # final=False holds back a character the cut split in two, instead of
         # failing the whole prefix and falling through to another encoding.
-        return codecs.getincrementaldecoder(encoding)(errors).decode(data, final=not cut)
+        return codecs.getincrementaldecoder(encoding)(errors).decode(data, final=False)
 
     if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
         # UTF-16 with a BOM: what Windows PowerShell 5 writes for "cmd > out.txt".
