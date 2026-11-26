@@ -73,7 +73,8 @@ to change (with the reason).
      on must name the recorded SHA; an unresolved thread opened on an older commit still counts as a finding, not as
      head movement.
    - When the PR is ready (not a draft), take the time of its latest `ready_for_review` event
-     (`gh api repos/bd78/py-md-view/issues/<N>/timeline --paginate -q '[.[] | select(.event=="ready_for_review")] | last | .created_at'`).
+     (`gh api repos/bd78/py-md-view/issues/<N>/timeline --paginate`, `-q` filter on `.event == "ready_for_review"`,
+     last `.created_at`).
      If there is no such event (opened ready), use the PR's `createdAt`.
      Report `clean` only if a CodeRabbit review or check run that started after that time has finished on the
      recorded SHA; if it is still pending, report `status: again` ("CodeRabbit ready review pending"), never

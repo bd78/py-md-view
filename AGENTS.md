@@ -33,8 +33,9 @@ These apply to every agent and every session in this repository. A later section
 16. **Wait once, don't poll.** Wait for CI with one watch command. At a rate limit, stop and say so.
 17. **Two strikes.** If the same failure is still there after two different fixes, stop and ask the person.
 18. **Work on your own, in small steps.** One small change per branch and pull request, merged (rule 9) before the
-    next begins; review fixes are new commits on the same branch. Fix every finding from the CodeRabbit review and the ponytail review, not only the major ones; a
-    finding you judge wrong gets a reply with the reason. Rules 10 and 17 still stop you.
+    next begins; review fixes are new commits on the same branch. Fix every finding from the CodeRabbit review and
+    the ponytail review, not only the major ones; a finding you judge wrong gets a reply with the reason. Rules 10
+    and 17 still stop you.
 
 ## Licence allowlist
 
