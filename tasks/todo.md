@@ -95,7 +95,7 @@ See [plan.md](plan.md). Verify command for every task:
 - Size: M
 
 ### Task 10: page
-- [ ] Move `ICONS`, the HTML builders, `build_page`, `render_document`, `render_welcome`, `render_error`
+- [x] Move `ICONS`, the HTML builders, `build_page`, `render_document`, `render_welcome`, `render_error`
 - Acceptance: as T2; CSP, nonce and config-escape tests pass; no import of `app`.
 - Size: M
 

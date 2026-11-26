@@ -44,7 +44,7 @@ def test_old_unchecked_cache_counts_only_if_it_matches(mdv, cache):
 
 
 def test_cdn_fallback_carries_the_hash(mdv, cache):
-    page = mdv.build_page(body="", title="t", mode="mermaid", style="github", zoom=1.0,
+    page = mdv.page.build_page(body="", title="t", mode="mermaid", style="github", zoom=1.0,
                           fit=False, scroll=0.0, base=None, can_go_back=False,
                           with_mermaid=True)
     assert 'integrity="sha256-' in page

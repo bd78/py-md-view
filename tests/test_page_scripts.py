@@ -13,7 +13,7 @@ import pytest
 
 def test_only_md_view_scripts_carry_the_nonce(mdv):
     body = '<p>hi</p><script>evil()</script><img src=x onerror="evil()">'
-    page = mdv.build_page(body=body, title="t", mode="doc", style="github",
+    page = mdv.page.build_page(body=body, title="t", mode="doc", style="github",
                           zoom=1.0, fit=False, scroll=0.0, base=None,
                           can_go_back=False, with_mermaid=True)
     csp = re.search(r'Content-Security-Policy" content="([^"]+)"', page).group(1)
@@ -28,7 +28,7 @@ def test_only_md_view_scripts_carry_the_nonce(mdv):
 
 
 def test_a_document_form_cannot_navigate_the_window(mdv):
-    page = mdv.build_page(body='<form action="https://evil.example"><button>x</button></form>',
+    page = mdv.page.build_page(body='<form action="https://evil.example"><button>x</button></form>',
                           title="t", mode="doc", style="github", zoom=1.0, fit=False,
                           scroll=0.0, base=None, can_go_back=False, with_mermaid=False)
     csp = re.search(r'Content-Security-Policy" content="([^"]+)"', page).group(1)
@@ -36,7 +36,7 @@ def test_a_document_form_cannot_navigate_the_window(mdv):
 
 
 def test_welcome_and_error_pages_have_no_inline_handlers(mdv):
-    for page in (mdv.render_welcome("github"), mdv.render_error("x", "y", "github")):
+    for page in (mdv.page.render_welcome("github"), mdv.page.render_error("x", "y", "github")):
         assert "onclick=" not in page
         assert 'id="pickFile"' in page
 
@@ -50,7 +50,7 @@ def test_markdown_disables_raw_meta_pragmas(mdv, tmp_path):
         '`<meta http-equiv=refresh content=15>`\n',
         encoding="utf-8",
     )
-    page = mdv.render_document(doc, style="github", zoom=1.0, fit=False,
+    page = mdv.page.render_document(doc, style="github", zoom=1.0, fit=False,
                                scroll=0.0, can_go_back=False)
     assert '<meta http-equiv="" content="15" HTTP-EQUIV=refresh>' in page
     assert '<meta http-equiv=""/http-equiv="Refresh" content="15" />' in page
@@ -168,7 +168,7 @@ def test_document_path_cannot_close_the_config_script(mdv):
     hostile = "/home/me/</script><meta http-equiv=refresh content=0;url=x>&/notes.md"
     tabs = [SimpleNamespace(path=PurePosixPath(hostile))]     # same on a Windows test run
     sidebar = {"docs": mdv.trees.build_doc_tree(tabs, active=0, stale=set())}
-    page = mdv.build_page(body="<p>x</p>", title="notes.md", mode="doc", style="github",
+    page = mdv.page.build_page(body="<p>x</p>", title="notes.md", mode="doc", style="github",
                           zoom=1.0, fit=False, scroll=0.0, base=None, can_go_back=False,
                           with_mermaid=False, sidebar=sidebar, find_query="</script>")
 
