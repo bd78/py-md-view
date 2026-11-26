@@ -83,7 +83,7 @@ open PR #21 and its partial-BOM follow-up.
 | Risk | Impact | Mitigation |
 |---|---|---|
 | A patch on the wrong module is silently dead | High: a test touches the real disk or network | patch map above; per-module "remove the patch, the test must fail" check |
-| `__file__` moves with the code (`assets/`, the registry command) | High: no diagrams offline; registry points at a module | tasks T4 and T14 name them; a test asserts `vendored_mermaid()` still finds `<repo>/assets` |
+| `__file__` moves with the code (`assets/`, the registry command) | High: no diagrams offline; registry points at a module | tasks T4 and T14 name them; a test asserts `vendored_mermaid()` still looks beside the running launcher |
 | Hand-off launch gets heavier | Medium: slower start of every second launch | T1 records the `sys.modules` baseline first; a test fails on any new import |
 | An import cycle appears when a function lands in the wrong layer | Medium | layer table; `python -c "import md_view.<m>"` for each module in isolation |
 | `pip install .` forgets the package | High: installed script cannot start | T2 adds `packages=["md_view"]` with the first module; every PR from then on installs into a scratch venv and runs `--help` |

@@ -90,8 +90,13 @@ path = mermaid_assets.find_mermaid()  # a test patching mermaid_assets.find_merm
   then touches the real disk or network. Rule: modules call each other through the module (`x.name()`), and the
   tests patch the module that defines the name.
 - **Proof that no logic changed:** a throwaway script compares, with `ast`, every top-level function, class and
-  constant of the old file against the new modules. Each must appear exactly once, with an identical body. The
-  script is not committed.
+  constant of the old file against the new modules. Each must appear exactly once, with an identical body once
+  `module.name` is read as `name` where `module` is one of the new `md_view` modules and defines `name` (never
+  `os.`, `json.` or any other prefix), and the function has no local or parameter of that name. The only other
+  allowed edits are the two `__file__` lookups that must keep following the running `md-view.py` launcher (the repo copy, or the one `pip install .` put in
+  `Scripts/`): `assets/` in
+  `vendored_mermaid()` and the script path in `_launch_command()` (see below); the script reports them as
+  changed, and they are checked by eye. The script is not committed.
 - **Proof that no patch is silently dead:** each patched name in the tests must be one that the code under test
   really looks up through that module. A test that still passes after its patch is removed is a smell; the
   Plan lists those.
@@ -114,7 +119,7 @@ path = mermaid_assets.find_mermaid()  # a test patching mermaid_assets.find_merm
 ## Things that break if done carelessly (checked in the code)
 
 1. `vendored_mermaid()` finds `assets/` with `Path(__file__).parent`; moved into the package, that would look
-   in `md_view/assets`. It must still point at the repo's `assets/` folder.
+   in `md_view/assets`. It must still look beside the running `md-view.py` launcher, as today.
 2. `_launch_command()` writes `Path(__file__)` into the Windows registry; it must keep pointing at `md-view.py`,
    not at a module inside the package.
 3. `setup.py` reads the version from a line in `md-view.py` and installs `md-view.py` as a script; both change.

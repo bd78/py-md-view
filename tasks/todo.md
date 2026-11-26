@@ -43,9 +43,10 @@ See [plan.md](plan.md). Verify command for every task:
 
 ### Task 4: mermaid_assets
 - [ ] Move `vendored_mermaid`, `_mermaid_ok`, `cached_mermaid`, `find_mermaid`, `fetch_mermaid`; keep the
-      `assets/` lookup pointing at `<repo>/assets` (use the repo root, not `Path(__file__).parent`); retarget
+      `assets/` lookup beside the running `md-view.py` launcher, as today (not `Path(__file__).parent` of the
+      module); retarget
       `find_mermaid`, `vendored_mermaid`, `fetch_mermaid` patches
-- [ ] Test: `vendored_mermaid()` finds `<repo>/assets/mermaid.min.js` when it exists
+- [ ] Test: `vendored_mermaid()` finds `assets/mermaid.min.js` beside the launcher when it exists
 - Acceptance: as T2 plus the new test; the mermaid tests pass.
 - Size: M
 
@@ -110,8 +111,9 @@ See [plan.md](plan.md). Verify command for every task:
 - Size: M (largest move, about 800 lines)
 
 ### Task 13: windows_assoc
-- [ ] Move the registry code; `_launch_command` keeps naming `md-view.py` (repo root, not the module)
-- [ ] Test: the command string ends with `md-view.py`
+- [ ] Move the registry code; `_launch_command` keeps naming the running `md-view.py` launcher, not the module
+- [ ] Test: the command's script argument names the running `md-view.py` launcher, and the `"%1"` placeholder is
+      still there
 - Size: S
 
 ### Task 14: cli, launcher, packaging
