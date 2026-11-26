@@ -9,14 +9,14 @@ import pytest
 # --- markdown ---------------------------------------------------------------
 
 def test_mermaid_source_reaches_the_page_unmangled(mdv):
-    body = mdv.render_markdown('```mermaid\ngraph TD; A["x & y"] --> B\n```\n')[0]
+    body = mdv.markdown_render.render_markdown('```mermaid\ngraph TD; A["x & y"] --> B\n```\n')[0]
     assert 'class="mermaid"' in body
     # escaped once for HTML, never smart-quoted or highlighted
     assert 'data-src="graph TD; A[&quot;x &amp; y&quot;] --&gt; B"' in body
 
 
 def test_task_lists_become_checkboxes(mdv):
-    body = mdv.render_markdown("- [x] done\n- [ ] todo\n")[0]
+    body = mdv.markdown_render.render_markdown("- [x] done\n- [ ] todo\n")[0]
     assert '<input type="checkbox" disabled checked>' in body
     assert body.count('type="checkbox"') == 2
 

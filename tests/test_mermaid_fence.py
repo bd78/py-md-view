@@ -2,7 +2,7 @@
 
 
 def diagrams(mdv, text):
-    return mdv.render_markdown(text)[0].count('class="mermaid"')
+    return mdv.markdown_render.render_markdown(text)[0].count('class="mermaid"')
 
 
 def test_top_level_fence_is_a_diagram(mdv):
@@ -11,7 +11,7 @@ def test_top_level_fence_is_a_diagram(mdv):
 
 def test_fence_inside_a_longer_backtick_block_stays_code(mdv):
     text = "````markdown\n```mermaid\ngraph TD; A-->B\n```\n````\n"
-    html = mdv.render_markdown(text)[0]
+    html = mdv.markdown_render.render_markdown(text)[0]
     assert diagrams(mdv, text) == 0
     assert "```mermaid" in html
 
