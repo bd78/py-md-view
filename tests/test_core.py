@@ -97,3 +97,37 @@ def test_svg_without_size_uses_its_viewbox(mdv, tmp_path):
     assert mdv.documents.svg_dimensions(svg) == (640.0, 480.0)
     svg.write_text('<svg width="10px" height="20" viewBox="0 0 640 480"></svg>', "utf-8")
     assert mdv.documents.svg_dimensions(svg) is None
+
+
+@pytest.mark.parametrize("value, absolute", [
+    ("640", True), (" 640px ", True), ("12.5 cm", True), ("1e2PT", True), ("-3 in", True),
+    ("100%", False), ("auto", False), ("", False), ("640 px x", False), ("1" + " " * 50 + "x", False),
+])
+def test_svg_absolute_length(mdv, value, absolute):
+    assert bool(mdv.documents.SVG_ABSOLUTE_LEN.match(value)) is absolute
+
+
+def test_svg_length_check_is_linear_on_hostile_input(mdv):
+    # A crafted width="1<spaces>x" made the old pattern try every split of the spaces: seconds per page.
+    import time
+    start = time.perf_counter()
+    assert mdv.documents.SVG_ABSOLUTE_LEN.match("1" + " " * 50_000 + "x") is None
+    assert time.perf_counter() - start < 1.0
+
+
+def test_svg_size_reads_only_the_head(mdv, tmp_path, monkeypatch):
+    svg = tmp_path / "big.svg"
+    svg.write_text('<svg viewBox="0 0 640 480">' + " " * 100_000 + "</svg>", "utf-8")
+    sizes = []
+    real_open = type(svg).open
+
+    def spying_open(self, *args, **kwargs):
+        f = real_open(self, *args, **kwargs)
+        real_read = f.read
+        f.read = lambda size=-1: (sizes.append(size), real_read(size))[1]
+        return f
+
+    monkeypatch.setattr(type(svg), "open", spying_open)
+    monkeypatch.setattr(type(svg), "read_bytes", lambda self: (_ for _ in ()).throw(AssertionError("read whole file")))
+    assert mdv.documents.svg_dimensions(svg) == (640.0, 480.0)
+    assert sizes and all(size is not None and 0 < size <= 16384 for size in sizes)

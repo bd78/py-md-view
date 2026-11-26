@@ -168,7 +168,8 @@ SVG_VIEWBOX = re.compile(
     r"(?P<w>[-\d.eE]+)[ ,]+(?P<h>[-\d.eE]+)",
     re.IGNORECASE,
 )
-SVG_ABSOLUTE_LEN = re.compile(r"^\s*[-\d.eE]+\s*(px|pt|pc|cm|mm|in|Q)?\s*$", re.IGNORECASE)
+# The space before the unit sits inside the optional group, so "1<spaces>x" has one way to fail, not one per split.
+SVG_ABSOLUTE_LEN = re.compile(r"^\s*[-\d.eE]+(?:\s*(?:px|pt|pc|cm|mm|in|Q))?\s*$", re.IGNORECASE)
 
 
 def svg_dimensions(path: Path) -> tuple[float, float] | None:
@@ -181,7 +182,8 @@ def svg_dimensions(path: Path) -> tuple[float, float] | None:
     absolute units, the author stated a size and the engine already has it right.
     """
     try:
-        head = path.read_bytes()[:16384].decode("utf-8", errors="replace")
+        with path.open("rb") as f:
+            head = f.read(16384).decode("utf-8", errors="replace")
     except OSError:
         return None
     tag = SVG_TAG.search(head)
