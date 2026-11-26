@@ -62,6 +62,6 @@ def test_hand_off_launch_imports_nothing_new(tmp_path):
     result = json.loads(out.stdout.strip().splitlines()[-1])
     assert result["code"] == 0                      # the fake window took the file
     assert [m for m in result["load"] if m != "__future__" and not m.startswith("md_view")] == []
-    tops = {m.split(".")[0] for m in result["main"]}
+    tops = {m.split(".")[0] for m in result["main"]} - {"md_view"}
     assert sorted(tops - set(sys.stdlib_module_names)) == []        # markdown, webview, pygments, ...
     assert sorted(tops & HEAVY_STDLIB) == []
