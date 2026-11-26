@@ -131,3 +131,13 @@ def test_svg_size_reads_only_the_head(mdv, tmp_path, monkeypatch):
     monkeypatch.setattr(type(svg), "read_bytes", lambda self: (_ for _ in ()).throw(AssertionError("read whole file")))
     assert mdv.documents.svg_dimensions(svg) == (640.0, 480.0)
     assert sizes and all(size is not None and 0 < size <= 16384 for size in sizes)
+
+
+def test_invalidate_with_a_relative_path_drops_the_cached_document(mdv, tmp_path, monkeypatch):
+    # document_parts stores absolute paths; a relative name for the same file must clear that entry.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "note.md").write_text("# one", "utf-8")
+    mdv.documents.document_parts(Path("note.md"))
+    assert any(key[0] == str(tmp_path / "note.md") for key in mdv.documents._DOC_CACHE)
+    mdv.documents.invalidate_document(Path("note.md"))
+    assert not any(key[0] == str(tmp_path / "note.md") for key in mdv.documents._DOC_CACHE)

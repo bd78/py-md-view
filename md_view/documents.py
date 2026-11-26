@@ -217,6 +217,8 @@ _DOC_CACHE_LIMIT = 32
 
 def invalidate_document(path: Path) -> None:
     """Drop cached output for a file, so the next render re-reads from disk."""
+    if not path.is_absolute():
+        path = path.resolve()   # document_parts stores keys this way
     key = str(path)
     for cached in [k for k in _DOC_CACHE if k[0] == key]:
         _DOC_CACHE.pop(cached, None)
