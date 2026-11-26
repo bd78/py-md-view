@@ -167,7 +167,7 @@ def test_document_path_cannot_close_the_config_script(mdv):
     # Legal on macOS and Linux: a folder named "<" holding one named "script><meta ...>".
     hostile = "/home/me/</script><meta http-equiv=refresh content=0;url=x>&/notes.md"
     tabs = [SimpleNamespace(path=PurePosixPath(hostile))]     # same on a Windows test run
-    sidebar = {"docs": mdv.build_doc_tree(tabs, active=0, stale=set())}
+    sidebar = {"docs": mdv.trees.build_doc_tree(tabs, active=0, stale=set())}
     page = mdv.build_page(body="<p>x</p>", title="notes.md", mode="doc", style="github",
                           zoom=1.0, fit=False, scroll=0.0, base=None, can_go_back=False,
                           with_mermaid=False, sidebar=sidebar, find_query="</script>")

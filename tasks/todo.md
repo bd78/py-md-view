@@ -89,7 +89,7 @@ See [plan.md](plan.md). Verify command for every task:
 - Size: M
 
 ### Task 9: trees
-- [ ] Move the tree code (old L2622-2925: `dir_entries`, `documents_anchor`, `filesystem_roots`, `build_fs_tree`,
+- [x] Move the tree code (old L2622-2925: `dir_entries`, `documents_anchor`, `filesystem_roots`, `build_fs_tree`,
       `build_doc_tree` and helpers); retarget the `_windows_drives` patches
 - Acceptance: as T2; the sidebar-root tests pass.
 - Size: M
