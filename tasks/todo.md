@@ -61,7 +61,7 @@ See [plan.md](plan.md). Verify command for every task:
 - Size: S
 
 ### Task 6: styles
-- [ ] Move `BASE_CSS` and `pygments_css` to `md_view/styles.py`
+- [x] Move `BASE_CSS` and `pygments_css` to `md_view/styles.py`
 - Acceptance: as T2; the page tests that read the CSS pass.
 - Size: XS
 
