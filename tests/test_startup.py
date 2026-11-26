@@ -9,8 +9,8 @@ def test_slow_mermaid_download_does_not_delay_the_window(mdv, tmp_path, monkeypa
     doc = tmp_path / "flow.mmd"
     doc.write_text("graph TD; A-->B", "utf-8")
 
-    monkeypatch.setattr(mdv, "find_mermaid", lambda: None)
-    monkeypatch.setattr(mdv, "fetch_mermaid", lambda **kw: time.sleep(10))  # a dead network
+    monkeypatch.setattr(mdv.mermaid_assets, "find_mermaid", lambda: None)
+    monkeypatch.setattr(mdv.mermaid_assets, "fetch_mermaid", lambda **kw: time.sleep(10))  # a dead network
     monkeypatch.setattr(mdv, "hand_off", lambda paths: False)
     monkeypatch.setattr(mdv, "InstanceServer", lambda viewer: None)
     shown = []
@@ -38,7 +38,7 @@ def _viewer(mdv, monkeypatch, cached):
     v.repaints = 0
     v.refresh = lambda: setattr(v, "repaints", v.repaints + 1)
     state = {"cached": cached}
-    monkeypatch.setattr(mdv, "find_mermaid", lambda: "m.js" if state["cached"] else None)
+    monkeypatch.setattr(mdv.mermaid_assets, "find_mermaid", lambda: "m.js" if state["cached"] else None)
     return v, state
 
 
