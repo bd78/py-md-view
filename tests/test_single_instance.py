@@ -126,5 +126,5 @@ def test_owner_lock_is_released_when_the_listener_cannot_start(mdv, data_home, t
 
     monkeypatch.setattr(mdv, "Viewer", FakeViewer)
     monkeypatch.setattr(mdv, "InstanceServer", no_listener)
-    monkeypatch.setattr(mdv, "find_mermaid", lambda: "x")
+    monkeypatch.setattr(mdv.mermaid_assets, "find_mermaid", lambda: "x")
     assert mdv.main([str(doc)]) == 0

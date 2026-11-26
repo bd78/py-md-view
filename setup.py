@@ -24,7 +24,7 @@ def read(name: str, default: str = "") -> str:
 
 
 def version() -> str:
-    for line in read("md-view.py").splitlines():
+    for line in read("md_view/__init__.py").splitlines():
         if line.startswith("__version__"):
             return line.split("=", 1)[1].strip().strip("\"'")
     return "0.0.0"

@@ -10,6 +10,9 @@ from pathlib import Path
 
 APP_NAME = "md-view"
 
+# The md-view.py that started this process; it sets this on import. assets/ is looked up beside it.
+LAUNCHER: Path | None = None
+
 # --------------------------------------------------------------------------- #
 # Supported file types
 # --------------------------------------------------------------------------- #

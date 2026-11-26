@@ -44,11 +44,13 @@ See [plan.md](plan.md). Verify command for every task:
 - Size: S
 
 ### Task 4: mermaid_assets
-- [ ] Move `vendored_mermaid`, `_mermaid_ok`, `cached_mermaid`, `find_mermaid`, `fetch_mermaid`; keep the
+- [x] Move `vendored_mermaid`, `_mermaid_ok`, `cached_mermaid`, `find_mermaid`, `fetch_mermaid`; keep the
       `assets/` lookup beside the running `md-view.py` launcher, as today (not `Path(__file__).parent` of the
       module); retarget
       `find_mermaid`, `vendored_mermaid`, `fetch_mermaid` patches
-- [ ] Test: `vendored_mermaid()` finds `assets/mermaid.min.js` beside the launcher when it exists
+- [x] Test: `vendored_mermaid()` finds `assets/mermaid.min.js` beside the launcher when it exists. The launcher sets
+      `config.LAUNCHER` to its own path; `__version__` moved to `md_view/__init__.py` (setup.py reads it there), since
+      `fetch_mermaid` needs it. `_mermaid_ok` reads `config.MERMAID_SHA256`, because the tamper tests patch it
 - Acceptance: as T2 plus the new test; the mermaid tests pass.
 - Size: M
 

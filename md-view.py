@@ -32,88 +32,19 @@ from pathlib import Path
 # they are used: together they cost ~45 ms at start-up, and the common
 # "hand the file to the running window" launch needs none of them.
 
-__version__ = "1.0.0"
 
 # The md_view package sits next to this launcher (in the repo, or in site-packages after `pip install .`).
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from md_view import config, links  # noqa: E402
+from md_view import __version__, config, links, mermaid_assets  # noqa: E402
+
+config.LAUNCHER = Path(__file__).resolve()   # the package looks beside it for assets/
 from md_view.config import (  # noqa: E402
     APP_NAME, CSV_COLOURS, CSV_EXTS, CSV_MAX_ROWS, DEFAULT_STYLE, FONT_LABELS, FONTS, IMAGE_EXTS,
-    MARKDOWN_EXTS, MERMAID_CDN, MERMAID_EXTS, MERMAID_SHA256, MERMAID_VERSION, RASTER_EXTS, STYLE_BG,
+    MARKDOWN_EXTS, MERMAID_CDN, MERMAID_EXTS, MERMAID_SHA256, RASTER_EXTS, STYLE_BG,
     STYLE_LABELS, STYLE_PYGMENTS, STYLES, SVG_EXTS, VIEWABLE_EXTS, ZOOM_STEPS,
 )
-
-# --------------------------------------------------------------------------- #
-# Mermaid asset management
-# --------------------------------------------------------------------------- #
-
-def vendored_mermaid() -> Path | None:
-    """A mermaid.min.js shipped next to this script wins over the cache."""
-    local = Path(__file__).resolve().parent / "assets" / "mermaid.min.js"
-    return local if local.is_file() and local.stat().st_size > 100_000 else None
-
-
-def _mermaid_ok(data: bytes) -> bool:
-    import hashlib
-    return hashlib.sha256(data).hexdigest() == MERMAID_SHA256
-
-
-def cached_mermaid() -> Path | None:
-    """The verified download. Named by version, so an older, unchecked cache never counts."""
-    p = config.assets_dir() / f"mermaid-{MERMAID_VERSION}.min.js"
-    try:
-        if p.is_file() and _mermaid_ok(p.read_bytes()):
-            return p
-    except OSError:
-        pass
-    # Adopt a cache from before pinning when it is exactly this release, so an
-    # offline machine keeps its diagrams.
-    legacy = config.assets_dir() / "mermaid.min.js"
-    try:
-        if legacy.is_file() and _mermaid_ok(legacy.read_bytes()):
-            legacy.replace(p)
-            return p
-    except OSError:
-        pass
-    return None
-
-
-def find_mermaid() -> Path | None:
-    return vendored_mermaid() or cached_mermaid()
-
-
-def fetch_mermaid(force: bool = False, timeout: int = 60, quiet: bool = False) -> Path | None:
-    """Download mermaid.min.js into the user cache. Returns the path, or None."""
-    if not force:
-        existing = find_mermaid()
-        if existing:
-            return existing
-    import urllib.error
-    import urllib.request
-
-    target = config.assets_dir() / f"mermaid-{MERMAID_VERSION}.min.js"
-    tmp = target.with_suffix(".part")
-    try:
-        if not quiet:
-            print(f"Downloading mermaid.js from {MERMAID_CDN} ...", file=sys.stderr)
-        req = urllib.request.Request(MERMAID_CDN, headers={"User-Agent": f"{APP_NAME}/{__version__}"})
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = resp.read()
-        if not _mermaid_ok(data):
-            raise ValueError(f"checksum mismatch for mermaid {MERMAID_VERSION}")
-        tmp.write_bytes(data)
-        tmp.replace(target)
-        if not quiet:
-            print(f"Saved {target} ({len(data) / 1e6:.1f} MB)", file=sys.stderr)
-        return target
-    except (urllib.error.URLError, OSError, ValueError, TimeoutError) as exc:
-        tmp.unlink(missing_ok=True)
-        if not quiet:
-            print(f"Could not download mermaid.js: {exc}", file=sys.stderr)
-        return None
-
 
 # --------------------------------------------------------------------------- #
 # Markdown -> HTML
@@ -2284,7 +2215,7 @@ def build_page(*, body: str, title: str, subtitle: str = "", mode: str,
 
     mermaid_tag = ""
     if with_mermaid:
-        path = find_mermaid()
+        path = mermaid_assets.find_mermaid()
         integrity = ""
         if path:
             src = path.as_uri()
@@ -3383,7 +3314,7 @@ class Viewer:
         with self._mermaid_lock:
             if self._mermaid_repainted:
                 return
-            if find_mermaid() is None:
+            if mermaid_assets.find_mermaid() is None:
                 self._mermaid_missing = True
                 return
             self._mermaid_repainted = True
@@ -3392,7 +3323,7 @@ class Viewer:
     def mermaid_arrived(self) -> None:
         """The background download finished: repaint only if a page needed it."""
         with self._mermaid_lock:
-            if not (self._mermaid_missing and find_mermaid()) or self._mermaid_repainted:
+            if not (self._mermaid_missing and mermaid_assets.find_mermaid()) or self._mermaid_repainted:
                 return
             self._mermaid_missing = False
             self._mermaid_repainted = True
@@ -4135,7 +4066,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.unregister:
         return unregister_associations()
     if args.fetch_assets:
-        return 0 if fetch_mermaid(force=args.force) else 1
+        return 0 if mermaid_assets.fetch_mermaid(force=args.force) else 1
 
     prefs = config.load_prefs()
     style = config.resolve_style(args.style, prefs)
@@ -4200,7 +4131,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     # Grab mermaid the first time it is actually needed, so the very first
     # launch of a diagram is not silently broken.
-    if not args.no_mermaid and find_mermaid() is None:
+    if not args.no_mermaid and mermaid_assets.find_mermaid() is None:
         def wants_mermaid(p: Path) -> bool:
             kind = classify(p)
             if kind == "mermaid":
@@ -4213,7 +4144,7 @@ def main(argv: list[str] | None = None) -> int:
             # launch loads mermaid from the CDN instead (see build_page); when
             # the download lands, a page the CDN failed is repainted.
             def fetch_then_repaint() -> None:
-                if fetch_mermaid(timeout=30, quiet=True):
+                if mermaid_assets.fetch_mermaid(timeout=30, quiet=True):
                     viewer.mermaid_arrived()
 
             threading.Thread(target=fetch_then_repaint, daemon=True).start()
