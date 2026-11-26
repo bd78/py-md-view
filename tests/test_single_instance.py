@@ -9,7 +9,7 @@ import pytest
 def data_home(mdv, tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    monkeypatch.setattr(mdv, "data_dir", lambda: tmp_path)  # macOS ignores both variables
+    monkeypatch.setattr(mdv.config, "data_dir", lambda: tmp_path)  # macOS ignores both variables
     return tmp_path
 
 

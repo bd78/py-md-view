@@ -64,12 +64,12 @@ def test_relative_href_resolves_from_the_document(mdv, tmp_path):
 # --- preferences ------------------------------------------------------------
 
 def test_style_choice_rules(mdv):
-    assert mdv.resolve_style(None, {}) == mdv.DEFAULT_STYLE
+    assert mdv.config.resolve_style(None, {}) == mdv.DEFAULT_STYLE
     # prefs from before github-ext existed move to the new default once ...
-    assert mdv.resolve_style(None, {"style": "dark"}) == mdv.DEFAULT_STYLE
+    assert mdv.config.resolve_style(None, {"style": "dark"}) == mdv.DEFAULT_STYLE
     # ... and a choice made after that sticks; an explicit flag always wins
-    assert mdv.resolve_style(None, {"style": "dark", "style_default": mdv.DEFAULT_STYLE}) == "dark"
-    assert mdv.resolve_style("light", {"style": "dark", "style_default": mdv.DEFAULT_STYLE}) == "light"
+    assert mdv.config.resolve_style(None, {"style": "dark", "style_default": mdv.DEFAULT_STYLE}) == "dark"
+    assert mdv.config.resolve_style("light", {"style": "dark", "style_default": mdv.DEFAULT_STYLE}) == "light"
 
 
 # --- sidebar ----------------------------------------------------------------

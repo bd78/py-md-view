@@ -93,8 +93,8 @@ def test_only_current_generated_page_can_call_viewer_actions(mdv, monkeypatch):
     monkeypatch.setitem(sys.modules, "webview", SimpleNamespace(
         create_window=create_window, start=start,
     ))
-    monkeypatch.setattr(mdv, "load_prefs", dict)
-    monkeypatch.setattr(mdv, "save_prefs", lambda prefs: None)
+    monkeypatch.setattr(mdv.config, "load_prefs", dict)
+    monkeypatch.setattr(mdv.config, "save_prefs", lambda prefs: None)
     monkeypatch.setattr(mdv, "_drop_stale_bridge_replies", lambda: None)
     viewer = mdv.Viewer(style="github", zoom=1.0, watch=False)
     monkeypatch.setattr(viewer, "_sidebar", dict)
@@ -153,11 +153,11 @@ def test_macos_app_bundle_is_asked_about_not_opened(mdv, tmp_path, monkeypatch, 
 
     viewer = SimpleNamespace(current=None, _window=Window())
 
-    monkeypatch.setattr(mdv, "_IS_MAC", True)   # `open Evil.app` would launch it
+    monkeypatch.setattr(mdv.config, "_IS_MAC", True)   # `open Evil.app` would launch it
     assert mdv.Viewer.open_path(viewer, app.as_uri()) is False
     assert asked and not opened
 
-    monkeypatch.setattr(mdv, "_IS_MAC", False)  # elsewhere a folder just opens
+    monkeypatch.setattr(mdv.config, "_IS_MAC", False)  # elsewhere a folder just opens
     mdv.Viewer.open_path(viewer, app.as_uri())
     assert opened == [app.resolve()]
 

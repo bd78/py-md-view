@@ -24,13 +24,15 @@ See [plan.md](plan.md). Verify command for every task:
 - Size: S
 
 ### Task 2: config
-- [ ] Move constants, file types, platform flags, `data_dir`, `assets_dir`, prefs, theme (old L39-158 and
+- [x] Move constants, file types, platform flags, `data_dir`, `assets_dir`, prefs, theme (old L39-158 and
       L2626-2628) to `md_view/config.py`; callers use `config.name`; retarget patches of `data_dir`, `PREFS_PATH`,
       `load_prefs`, `save_prefs`, `_IS_MAC`
-- [ ] `md_view/__init__.py` (version, app name, no heavy import); `tests/conftest.py` puts the repo root on `sys.path`
-- [ ] `setup.py`: `packages=["md_view"]` next to the script, so `pip install .` keeps working from the first move;
-      the version is still read from `md-view.py` until Task 14
-- [ ] Scratch venv: `pip install .`, then run the installed `md-view.py --help` from another directory
+- [x] `md_view/__init__.py` (docstring only); `APP_NAME` lives in `config`, and `__version__` stays in `md-view.py`
+      until Task 14 (setup.py reads it there). The launcher puts its own folder on `sys.path`, so no `conftest.py`
+      change is needed
+- [x] `setup.py`: `packages=["md_view"]` next to the script, so `pip install .` keeps working from the first move
+- [x] Scratch venv: `pip install .`, then run the installed `md-view.py --help` from another directory
+- Functions and patched flags are used as `config.name`; plain constants are imported by name (never rebound)
 - Acceptance: `ast_compare` clean; each patch removed makes its test fail; `import md_view.config` alone works;
   the installed script starts.
 - Size: M (config, md-view.py, setup.py, ~3 test files)
