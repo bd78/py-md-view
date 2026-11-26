@@ -82,7 +82,7 @@ def test_open_documents_tree_folds_single_folder_chains(mdv, tmp_path):
     a = tmp_path / "proj" / "docs" / "guide" / "a.md"
     b = tmp_path / "proj" / "docs" / "guide" / "b.md"
     c = tmp_path / "proj" / "notes" / "deep" / "c.md"
-    roots = mdv.build_doc_tree([Tab(a), Tab(b), Tab(c)], active=1, stale={c})
+    roots = mdv.trees.build_doc_tree([Tab(a), Tab(b), Tab(c)], active=1, stale={c})
     root = roots[0]
     names = [child["name"] for child in root["children"]]
     assert names == [f"docs{mdv.os.sep}guide", f"notes{mdv.os.sep}deep"]

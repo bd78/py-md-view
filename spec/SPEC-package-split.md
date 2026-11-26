@@ -113,7 +113,8 @@ path = mermaid_assets.find_mermaid()  # a test patching mermaid_assets.find_merm
 - **Always:** move code without editing it; one module per commit; run the tests after every commit; keep
   `from __future__ import annotations`; keep the lazy imports (heavy modules imported where used).
 - **Ask first:** any change to packaging (`setup.py`, `MANIFEST.in`, run.ps1 / run.bat); any edit to a test
-  beyond its patch targets; a cycle between modules that forces moving a function to another layer.
+  beyond its patch targets, except tightening an assertion so that removing the test's patch makes it fail (the
+  liveness proof under Testing strategy requires that); a cycle between modules that forces moving a function to another layer.
 - **Never:** change behaviour or logic in a move commit; rename a public name; fix an audit finding or a bug in
   the same PR; add a dependency; touch the sibling Rust port.
 
