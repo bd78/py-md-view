@@ -1,5 +1,6 @@
 """mermaid.js runs with access to the bridge: only the pinned bytes are accepted."""
 
+import base64
 import hashlib
 import io
 import urllib.request
@@ -44,10 +45,11 @@ def test_old_unchecked_cache_counts_only_if_it_matches(mdv, cache):
 
 
 def test_cdn_fallback_carries_the_hash(mdv, cache):
-    page = mdv.build_page(body="", title="t", mode="mermaid", style="github", zoom=1.0,
+    page = mdv.page.build_page(body="", title="t", mode="mermaid", style="github", zoom=1.0,
                           fit=False, scroll=0.0, base=None, can_go_back=False,
                           with_mermaid=True)
-    assert 'integrity="sha256-' in page
+    expected = base64.b64encode(hashlib.sha256(GOOD).digest()).decode()   # the pin the cache fixture patched in
+    assert f'integrity="sha256-{expected}"' in page
 
 
 def test_tampered_versioned_cache_is_a_miss(mdv, cache):
