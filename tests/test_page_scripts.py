@@ -23,6 +23,7 @@ def test_only_md_view_scripts_carry_the_nonce(mdv):
     assert "'unsafe-inline'" not in script_src
     # config, viewer, mermaid loader and its ready call -- and nothing else
     assert page.count(f'nonce="{nonce}"') == 4
+    assert f'<script nonce="{nonce}">{mdv.viewer_js.VIEWER_JS}</script>' in page   # the viewer runs, whole
     assert "<script>evil()</script>" in page          # present, but blocked by CSP
 
 
