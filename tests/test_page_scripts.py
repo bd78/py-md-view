@@ -221,9 +221,8 @@ def test_document_html_cannot_shadow_document_methods(mdv, html):
     # A named <img> replaces document.getElementById for the whole page: the viewer script then
     # stops, and a target=_blank link went straight to webbrowser.open with no md-view check.
     body = mdv.markdown_render.render_markdown(html + "\n")[0]
-    tags = re.findall(r"<(?:img|form|embed|iframe|object)\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", body, re.I)
-    assert tags and not any(re.search(r"[\s/](name|id)\s*=", re.sub(r"\"[^\"]*\"|'[^']*'", "", t), re.I)
-                            for t in tags), body
+    tags = re.findall(r'<(?:img|form|embed|iframe|object)[^>]*>', body, re.I)
+    assert not any(re.search(r'(?<![a-z-])(name|id)=', t, re.I) for t in tags), body
 
 
 def test_code_examples_of_named_tags_are_left_alone(mdv):
