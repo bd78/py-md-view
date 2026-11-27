@@ -8,11 +8,8 @@ import threading
 import time
 from pathlib import Path
 
-from md_view import documents, mermaid_assets, styles
-from md_view.app import Viewer
+import md_view
 from md_view.config import APP_NAME, FONTS, STYLES, ZOOM_STEPS
-from md_view.single_instance import hand_off, instance_lock, InstanceServer
-from md_view.windows_assoc import register_associations, unregister_associations
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -55,13 +52,14 @@ def build_parser() -> argparse.ArgumentParser:
                    help="always start a separate window instead of adding a tab "
                         "to the running viewer")
     p.add_argument("--debug", action="store_true", help="open devtools and print tracebacks")
-    p.add_argument("--version", action="version", version=f"{APP_NAME} {documents.__version__ if hasattr(documents, '__version__') else '1.0.0'}")
+    p.add_argument("--version", action="version", version=f"{APP_NAME} {md_view.__version__}")
     return p
 
 
 def _warm_renderers() -> None:
     """Import the markdown stack and build the highlight CSS, off the main thread."""
     try:
+        from md_view import documents, styles
         documents.markdown_render._markdown_module()
         styles.pygments_css()
     except Exception:
@@ -72,10 +70,13 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     if args.register:
+        from md_view.windows_assoc import register_associations
         return register_associations()
     if args.unregister:
+        from md_view.windows_assoc import unregister_associations
         return unregister_associations()
     if args.fetch_assets:
+        from md_view import mermaid_assets
         return 0 if mermaid_assets.fetch_mermaid(force=args.force) else 1
 
     from md_view import config
@@ -104,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     # opened one after another from Explorer. When the owner is still starting
     # up, keep trying until its listener answers; the lock is released if the owner
     # dies, so the wait always ends, and giving up early would open a second window.
+    from md_view.single_instance import hand_off, instance_lock, InstanceServer
     owner = None if args.new_window else instance_lock()
     if paths and not args.new_window:
         while True:
@@ -136,29 +138,32 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
+    from md_view.app import Viewer
     viewer = Viewer(
         paths, style=style, zoom=zoom, font=font,
         watch=not args.no_watch, mermaid=not args.no_mermaid, debug=args.debug,
     )
     # Grab mermaid the first time it is actually needed, so the very first
     # launch of a diagram is not silently broken.
-    if not args.no_mermaid and mermaid_assets.find_mermaid() is None:
-        def wants_mermaid(p: Path) -> bool:
-            kind = documents.classify(p)
-            if kind == "mermaid":
-                return True
-            return kind == "markdown" and "mermaid" in documents.read_text(p).lower()
+    if not args.no_mermaid:
+        from md_view import mermaid_assets, documents
+        if mermaid_assets.find_mermaid() is None:
+            def wants_mermaid(p: Path) -> bool:
+                kind = documents.classify(p)
+                if kind == "mermaid":
+                    return True
+                return kind == "markdown" and "mermaid" in documents.read_text(p).lower()
 
-        if any(wants_mermaid(p) for p in paths):
-            # In the background: on a network that drops the CDN this would hold
-            # the window back for the whole timeout, on every launch. This
-            # launch loads mermaid from the CDN instead (see page.build_page); when
-            # the download lands, a page the CDN failed is repainted.
-            def fetch_then_repaint() -> None:
-                if mermaid_assets.fetch_mermaid(timeout=30, quiet=True):
-                    viewer.mermaid_arrived()
+            if any(wants_mermaid(p) for p in paths):
+                # In the background: on a network that drops the CDN this would hold
+                # the window back for the whole timeout, on every launch. This
+                # launch loads mermaid from the CDN instead (see page.build_page); when
+                # the download lands, a page the CDN failed is repainted.
+                def fetch_then_repaint() -> None:
+                    if mermaid_assets.fetch_mermaid(timeout=30, quiet=True):
+                        viewer.mermaid_arrived()
 
-            threading.Thread(target=fetch_then_repaint, daemon=True).start()
+                threading.Thread(target=fetch_then_repaint, daemon=True).start()
 
     if not args.new_window:
         try:
