@@ -70,20 +70,28 @@ specification. When you change user-facing behaviour here, say so in the pull re
 - **Documents are untrusted.** Raw HTML in Markdown must never run script, reach the Python bridge, navigate the
   window away from md-view's pages, or start a program without the person confirming.
 - **One launcher.** `md-view.py` stays the one thing people run and the registry command points at. The code is
-  moving into the `md_view/` package next to it, one module per pull request
-  ([spec/SPEC-package-split.md](spec/SPEC-package-split.md)); the launcher finds it beside itself or, after `pip
-  install .`, in site-packages.
+  split into the `md_view/` package next to it ([spec/SPEC-package-split.md](spec/SPEC-package-split.md)); the launcher
+  finds it beside itself or, after `pip install .`, in site-packages.
 - **Lean start-up.** The "hand the file to the running window" launch imports almost nothing. Heavy modules are
   imported where they are used, not at the top.
 - **Dependencies** live in `requirements.txt` only. Prefer the standard library.
 
 ## Map of the code
 
-`md_view/config.py` holds the file types, paths, prefs and theme; `md_view/links.py` turns links into paths and
-hands paths to the OS. The rest of `md-view.py` is split by `# ----` banner comments, in this order:
-mermaid asset management; Markdown to HTML; stylesheet (`BASE_CSS`); viewer JavaScript (`VIEWER_JS`); HTML assembly;
-per-document rendering; delimited text; sidebar trees; the application (`Viewer`, `Api`); single instance; Windows
-file associations; CLI (`main`).
+`md_view/` package structure:
+- `config.py`: file types, paths, prefs, theme, constants.
+- `links.py`: link-to-path resolution and OS handoff.
+- `mermaid_assets.py`: Mermaid script location, download, and validation.
+- `markdown_render.py`: Markdown extension and rendering stack.
+- `styles.py`: base CSS and pygments syntax highlighting CSS.
+- `viewer_js.py`: frontend client JavaScript.
+- `documents.py`: file classification, text reading, CSV/delimited parsing.
+- `trees.py`: sidebar file and directory tree building.
+- `page.py`: HTML assembly, icons, and document page rendering.
+- `single_instance.py`: loopback single-instance server and process hand-off.
+- `app.py`: `Viewer` application state and `Api` pywebview bridge actions.
+- `windows_assoc.py`: Windows file association registry registration.
+- `cli.py`: CLI parser, warm renderers, and entry point.
 
 ## Commits
 
