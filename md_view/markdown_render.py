@@ -99,6 +99,54 @@ def mermaid_block(source: str) -> str:
 
 TASK_ITEM = re.compile(r"<li>(\s*)\[([ xX])\]\s+")
 RAW_META = re.compile(r"<meta(?=[\t\n\f\r />])", re.IGNORECASE)
+# Elements whose name (or, for <object>, id) becomes a property of `document`: a raw
+# <img name="getElementById"> replaces that method for the whole page and stops the viewer script.
+NAMED_TAG = re.compile(r"<(img|form|embed|iframe|object)(?=[\t\n\f\r />])", re.IGNORECASE)
+
+
+def _unname_tags(html_text: str) -> str:
+    """Rename name= (and id= on <object>) to data-mdv-*, so a document cannot shadow document methods.
+
+    Attributes are read the way an HTML parser reads them: a name runs to whitespace, "/", ">" or "=",
+    a value is a whole quoted string or an unquoted run, and the next attribute may follow a quote
+    with no space. A regex over the tag either misses `alt=""name=x` or rewrites `src=a/name=b`.
+    """
+    out, pos, n = [], 0, len(html_text)
+    for m in NAMED_TAG.finditer(html_text):
+        if m.start() < pos:
+            continue                       # inside a tag already scanned
+        renamed = ("name", "id") if m.group(1).lower() == "object" else ("name",)
+        out.append(html_text[pos:m.end()])
+        i = m.end()
+        while i < n and html_text[i] != ">":
+            if html_text[i] in " \t\n\f\r/":
+                out.append(html_text[i])
+                i += 1
+                continue
+            j = i + 1                      # an attribute name; "=" may start one
+            while j < n and html_text[j] not in " \t\n\f\r/>=":
+                j += 1
+            name = html_text[i:j]
+            out.append("data-mdv-" + name if name.lower() in renamed else name)
+            i = j
+            k = i
+            while k < n and html_text[k] in " \t\n\f\r":
+                k += 1
+            if k < n and html_text[k] == "=":
+                k += 1
+                while k < n and html_text[k] in " \t\n\f\r":
+                    k += 1
+                if k < n and html_text[k] in "\"'":
+                    close = html_text.find(html_text[k], k + 1)
+                    k = n if close < 0 else close + 1
+                else:
+                    while k < n and html_text[k] not in " \t\n\f\r>":
+                        k += 1
+                out.append(html_text[i:k])
+                i = k
+        pos = i
+    out.append(html_text[pos:])
+    return "".join(out)
 
 
 def _task_lists(html_text: str) -> str:
@@ -141,4 +189,5 @@ def render_markdown(text: str) -> tuple[str, str]:
     # keeps the first copy of an attribute; make raw meta pragmas inert without
     # re-parsing the rest of the document or touching escaped code examples.
     body = RAW_META.sub('<meta http-equiv=""', body)
+    body = _unname_tags(body)
     return body, getattr(md, "toc", "")

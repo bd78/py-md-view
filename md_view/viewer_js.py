@@ -935,6 +935,11 @@ VIEWER_JS = r"""
   /* link handling: local docs open in-app, the web opens in the browser */
   /* ------------------------------------------------------------------ */
 
+  // A middle-click on a link fires auxclick, not click, and would ask the webview for a new window.
+  document.addEventListener("auxclick", function (e) {
+    if (e.target.closest && e.target.closest("a[href]")) e.preventDefault();
+  });
+
   document.addEventListener("click", function (e) {
     var a = e.target.closest && e.target.closest("a[href]");
     if (!a) return;
