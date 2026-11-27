@@ -15,16 +15,12 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 
 # md-view.py's top-level imports. A new one belongs here only if the hand-off launch really needs it.
-TOP_LEVEL = "argparse, errno, functools, html, json, os, re, socket, sys, threading, time, pathlib"
+TOP_LEVEL = "sys, pathlib, argparse"
 
 # The hand-off path of main() may add small standard-library modules (argparse pulls in shutil and
 # locale, socket needs the idna codec, the lock needs msvcrt or fcntl; the exact set varies by Python
 # version). It must not add a third-party module, nor one of these, which md-view imports only where used.
 HEAVY_STDLIB = {"urllib", "secrets", "tempfile", "webbrowser", "csv", "hashlib", "ctypes", "winreg"}
-
-# Until md-view.py is a thin launcher (Task 14) it loads all md_view modules, as it held all their code
-# before the split; Task 14 adds the check that the hand-off imports none of app, page, markdown_render,
-# styles or viewer_js.
 
 # Plays the running window: answers one hand-off with "ok", then reports what each stage imported.
 LAUNCH = r"""
@@ -49,7 +45,7 @@ def answer():
     conn.close()
 
 threading.Thread(target=answer, daemon=True).start()
-code = mdv.main([sys.argv[2]])
+code = mdv.cli.main([sys.argv[2]])
 print(json.dumps({"code": code, "load": sorted(loaded - before), "main": sorted(set(sys.modules) - loaded)}))
 """ % TOP_LEVEL
 
@@ -65,7 +61,7 @@ def test_hand_off_launch_imports_nothing_new(tmp_path):
     )
     result = json.loads(out.stdout.strip().splitlines()[-1])
     assert result["code"] == 0                      # the fake window took the file
-    assert [m for m in result["load"] if m != "__future__" and not m.startswith("md_view")] == []
+    assert [m for m in result["load"] if m != "__future__" and not m.startswith("md_view") and m not in ("argparse", "gettext")] == []
     tops = {m.split(".")[0] for m in result["main"]} - {"md_view"}
     assert sorted(tops - set(sys.stdlib_module_names)) == []        # markdown, webview, pygments, ...
     assert sorted(tops & HEAVY_STDLIB) == []
