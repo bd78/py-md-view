@@ -22,7 +22,7 @@ from pathlib import Path
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from md_view import cli, config
+from md_view import config, cli
 
 config.LAUNCHER = Path(__file__).resolve()   # the package looks beside it for assets/
 
