@@ -578,6 +578,10 @@ class Viewer:
                     self._mtimes[self.tab.path] = mtime
         bg = STYLE_BG.get(self.style, "#ffffff")
 
+        # pywebview sends a new-window request (target=_blank, middle-click) to webbrowser.open, which on
+        # Windows is os.startfile: a document link to file:///...exe would run with no question. Keep it
+        # in the window instead; links md-view itself opens go through open_external, which asks.
+        self.webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = False
         self._window = self.webview.create_window(
             self._title(self.current),
             url=start_url,

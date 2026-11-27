@@ -91,8 +91,9 @@ def test_only_current_generated_page_can_call_viewer_actions(mdv, monkeypatch):
         assert viewer.find_query == "repainted"
 
     window = Window()
+    settings = {"OPEN_EXTERNAL_LINKS_IN_BROWSER": True}           # pywebview's default
     monkeypatch.setitem(sys.modules, "webview", SimpleNamespace(
-        create_window=create_window, start=start,
+        create_window=create_window, start=start, settings=settings,
     ))
     monkeypatch.setattr(mdv.config, "load_prefs", dict)
     monkeypatch.setattr(mdv.config, "save_prefs", lambda prefs: None)
@@ -100,6 +101,8 @@ def test_only_current_generated_page_can_call_viewer_actions(mdv, monkeypatch):
     viewer = mdv.Viewer(style="github", zoom=1.0, watch=False)
     monkeypatch.setattr(viewer, "_sidebar", dict)
     viewer.run()
+    # A new-window request must never reach webbrowser.open (os.startfile on Windows runs file:// programs).
+    assert settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] is False
 
 
 def test_tree_never_hands_files_to_the_os(mdv, tmp_path, monkeypatch):
@@ -203,3 +206,37 @@ def test_document_html_cannot_borrow_the_viewer_buttons(mdv):
     assert 'if (mode === "blank") on("pickFile"' in js          # md-view's own welcome and error pages only
     # on() runs early (revealBtn); the roots it reads must already exist, or the whole script throws on load.
     assert js.index("var TRUSTED") < js.index('on("')
+
+
+@pytest.mark.parametrize("html", [
+    '<img name="getElementById" src="x">',
+    '<img alt=">" name="getElementById" src="x">',          # a quoted ">" must not end the tag early
+    "<IMG SRC=x NAME=addEventListener>",
+    '<form name="querySelector"></form>',
+    '<object id="body" data="x"></object>',
+    '<img alt=""name=getElementById src=x>',                # an attribute straight after a quote
+    '<img src=a"b name=getElementById>',                     # a quote inside an unquoted value
+])
+def test_document_html_cannot_shadow_document_methods(mdv, html):
+    # A named <img> replaces document.getElementById for the whole page: the viewer script then
+    # stops, and a target=_blank link went straight to webbrowser.open with no md-view check.
+    body = mdv.markdown_render.render_markdown(html + "\n")[0]
+    tags = re.findall(r"<(?:img|form|embed|iframe|object)\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*>", body, re.I)
+    assert tags and not any(re.search(r"[\s/](name|id)\s*=", re.sub(r"\"[^\"]*\"|'[^']*'", "", t), re.I)
+                            for t in tags), body
+
+
+def test_code_examples_of_named_tags_are_left_alone(mdv):
+    body = mdv.markdown_render.render_markdown('`<img name="x">`\n')[0]
+    assert "&lt;img name=&quot;x&quot;&gt;" in body or '&lt;img name="x"&gt;' in body
+
+
+def test_middle_click_on_a_link_is_caught(mdv):
+    js = mdv.viewer_js.VIEWER_JS
+    assert 'document.addEventListener("auxclick"' in js       # the tab strip has its own, for closing tabs
+    assert "a[href]" in js.split('document.addEventListener("auxclick"', 1)[1][:200]
+
+
+def test_unquoted_values_that_contain_name_are_kept(mdv):
+    body = mdv.markdown_render.render_markdown("<img src=images/name=cover.png alt=x>\n")[0]
+    assert "src=images/name=cover.png" in body
