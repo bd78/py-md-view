@@ -1,20 +1,20 @@
-.venv/
-venv/
+# Python
 __pycache__/
-*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+.venv/
+env/
+venv/
 *.egg-info/
 build/
 dist/
 .pytest_cache/
 
-# mermaid.min.js is ~3.5 MB and fetched on demand
-assets/
-
-# graphify knowledge graph output, rebuilt locally
+# Local data & logs
+instance.json
 graphify-out/
 
-# Claude Code agents, skills and settings stay local
+# IDE & Tooling
 .claude/
-
-# editor settings stay local
 .vscode/
